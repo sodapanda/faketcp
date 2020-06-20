@@ -1,0 +1,2 @@
+sudo ip address add 10.1.1.1/24 dev faketcp
+sudo ip link set up dev faketcp

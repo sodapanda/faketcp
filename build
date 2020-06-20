@@ -1,0 +1,3 @@
+go build
+scp -P 22 faketcp root@45.117.103.179:/root/faketcp/
+sudo ./faketcp
