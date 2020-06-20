@@ -30,6 +30,7 @@ func clientTunToSocket(tun *water.Interface) {
 				tcp.SrcPort, tcp.DstPort, tcp.Seq, tcp.Ack, tcp.URG, tcp.ACK, tcp.PSH, tcp.RST, tcp.SYN, tcp.FIN, tcp.Window)
 
 			_, err := clientConn.WriteToUDP(tcp.Payload, clientUDPAddr)
+			fmt.Println("send to udp socket")
 			checkError(err)
 		}
 		fmt.Println(hex.Dump(data))
@@ -64,7 +65,7 @@ func clientSocketToTun(socketListenPort string, tun *water.Interface, serverIP s
 		ipL := &layers.IPv4{
 			Version:  4,
 			TOS:      0,
-			TTL:      20,
+			TTL:      60,
 			Id:       10,
 			Protocol: 6,
 			Flags:    0b010,

@@ -74,7 +74,7 @@ func serverSocketToTun(tun *water.Interface, serverSendto string, srcPort int) {
 		ipL := &layers.IPv4{
 			Version:  4,
 			TOS:      0,
-			TTL:      20,
+			TTL:      60,
 			Id:       10,
 			Protocol: 6,
 			Flags:    0b010,

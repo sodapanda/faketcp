@@ -22,7 +22,7 @@ func main() {
 		go serverSocketToTun(tun, "127.0.0.1:21007", 12271)
 	} else {
 		go clientTunToSocket(tun)
-		go clientSocketToTun("21007", tun, "45.117.103.179", 12271)
+		go clientSocketToTun("21007", tun, "36.255.222.252", 12271)
 	}
 	reader := bufio.NewReader(os.Stdin)
 	reader.ReadString('\n')
