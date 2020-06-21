@@ -1,2 +1,2 @@
 go build
-scp -P 22 faketcp root@36.255.222.252:/root/faketcp/
+scp -P 12266 faketcp root@120.240.47.66:/root/faketcp/

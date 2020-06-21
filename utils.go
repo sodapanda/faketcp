@@ -36,7 +36,7 @@ func makePacket(pBuff gopacket.SerializeBuffer, srcIP net.IP, dstIP net.IP, srcP
 		RST:     false,
 		SYN:     syn,
 		FIN:     false,
-		Window:  60000,
+		Window:  1600,
 	}
 	tcpL.SetNetworkLayerForChecksum(ipL)
 	err := gopacket.SerializeLayers(pBuff, opts, ipL, tcpL, gopacket.Payload(payLoad))

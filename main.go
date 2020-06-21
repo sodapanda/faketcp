@@ -13,8 +13,8 @@ import (
 
 var clientSocketListenPort = "21007"
 
-var clientTunDstIP = "36.255.222.252"
-var clientTunDstPort = 12271
+var clientTunDstIP = "120.240.47.66"
+var clientTunDstPort = 12272
 var clientTunSrcIP = "10.1.1.2"
 var clientTunSrcPort = 8888
 
