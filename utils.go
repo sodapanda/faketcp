@@ -61,17 +61,18 @@ func nextSeq() uint32 {
 		seqNum = seqNum + 1
 		return seqNum
 	}
-	seqNum = 1
+	seqNum = 0
 	return seqNum
 }
 
+//Linux的SNAT和DNAT要跟踪连接状态，序号是其中一个判断依据
 func addAck(ack uint32) uint32 {
 	if ack < 4294967295 {
 		next := ack + 1
 		return next
 	}
 
-	return 1
+	return 0
 }
 
 func getSrcIP(data []byte) net.IP {

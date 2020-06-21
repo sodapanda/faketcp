@@ -14,6 +14,7 @@ import (
 var serverConn *net.UDPConn
 var peerIP net.IP
 var peerPort uint16
+var mClientSeq uint32
 
 func serverHandShake(tun *water.Interface) {
 	//等待syn
@@ -39,8 +40,9 @@ func serverHandShake(tun *water.Interface) {
 	fmt.Printf("server got SYN %s %d\n", clientIP, clientPort)
 	//返回syn+ack
 	fmt.Println("server sending SYN+ACk")
+	mClientSeq = addAck(clientSeq)
 	pBuffer := gopacket.NewSerializeBuffer()
-	synAck := makePacket(pBuffer, net.IP{10, 1, 1, 2}, clientIP, serverTunSrcPort, clientPort, true, true, nextSeq(), clientSeq+1, nil)
+	synAck := makePacket(pBuffer, net.IP{10, 1, 1, 2}, clientIP, serverTunSrcPort, clientPort, true, true, nextSeq(), mClientSeq, nil)
 	_, err := tun.Write(synAck)
 	checkError(err)
 	fmt.Println("server sent SYN+ACK")
@@ -83,7 +85,7 @@ func serverTunToSocket(tun *water.Interface) {
 				tcp.SrcPort, tcp.DstPort, tcp.Seq, tcp.Ack, tcp.URG, tcp.ACK, tcp.PSH, tcp.RST, tcp.SYN, tcp.FIN, tcp.Window)
 
 			peerPort = uint16(tcp.SrcPort)
-
+			mClientSeq = addAck(tcp.Seq)
 			fmt.Printf("server got packet from %s port %d\n", peerIP, peerPort)
 			_, err := serverConn.Write(tcp.Payload)
 			checkError(err)
@@ -130,15 +132,15 @@ func serverSocketToTun(tun *water.Interface, serverSendto string, srcPort int) {
 			SrcPort: layers.TCPPort(srcPort),
 			DstPort: layers.TCPPort(peerPort),
 			Seq:     nextSeq(),
-			Ack:     0,
+			Ack:     mClientSeq,
 			NS:      true,
 			CWR:     false,
 			ECE:     false,
 			URG:     false,
-			ACK:     false,
+			ACK:     true,
 			PSH:     false,
 			RST:     false,
-			SYN:     true,
+			SYN:     false,
 			FIN:     false,
 			Window:  60000,
 		}

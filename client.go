@@ -45,7 +45,7 @@ func handShake(tun *water.Interface) bool {
 
 	//发送ACK
 	fmt.Println("client sending ACK")
-	mServerSeq = serverSeq + 1
+	mServerSeq = addAck(serverSeq)
 	ack := makePacket(pBuffer, srcIP, dstIP, clientTunSrcPort, clientTunDstPort, false, true, nextSeq(), mServerSeq, nil)
 	_, err = tun.Write(ack)
 	checkError(err)
@@ -68,7 +68,7 @@ func clientTunToSocket(tun *water.Interface) {
 			tcp, _ := tcpLayer.(*layers.TCP)
 			fmt.Printf("src port %d,dst port %d,sqd %d,ack %d,urg %t,ACK %t,psh %t,rst %t,syn %t,fin %t,window %d\n",
 				tcp.SrcPort, tcp.DstPort, tcp.Seq, tcp.Ack, tcp.URG, tcp.ACK, tcp.PSH, tcp.RST, tcp.SYN, tcp.FIN, tcp.Window)
-
+			mServerSeq = addAck(tcp.Seq)
 			_, err := clientConn.WriteToUDP(tcp.Payload, clientUDPAddr)
 			fmt.Println("send to udp socket")
 			checkError(err)
@@ -116,7 +116,7 @@ func clientSocketToTun(socketListenPort string, tun *water.Interface, serverIP s
 			SrcPort: layers.TCPPort(8888),
 			DstPort: layers.TCPPort(serverPort),
 			Seq:     nextSeq(),
-			Ack:     0,
+			Ack:     mServerSeq,
 			NS:      false,
 			CWR:     false,
 			ECE:     false,
