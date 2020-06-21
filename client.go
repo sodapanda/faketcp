@@ -55,24 +55,30 @@ func handShake(tun *water.Interface) bool {
 func clientTunToSocket(tun *water.Interface) {
 	fmt.Println("client tun")
 	buffer := make([]byte, 2000)
+	var ip4 layers.IPv4
+	var tcp layers.TCP
+	var payload gopacket.Payload
+
+	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeIPv4, &ip4, &tcp, &payload)
+	decodedLayers := make([]gopacket.LayerType, 0, 10)
+
 	for {
 		n, err := tun.Read(buffer)
 		checkError(err)
 		data := buffer[:n]
-		packet := gopacket.NewPacket(data, layers.LayerTypeIPv4, gopacket.NoCopy)
 
-		if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
-			// fmt.Println("TUN interface: This is a TCP packet!")
-			// Get actual TCP data from this layer
-			tcp, _ := tcpLayer.(*layers.TCP)
-			// fmt.Printf("src port %d,dst port %d,sqd %d,ack %d,urg %t,ACK %t,psh %t,rst %t,syn %t,fin %t,window %d\n",
-			// 	tcp.SrcPort, tcp.DstPort, tcp.Seq, tcp.Ack, tcp.URG, tcp.ACK, tcp.PSH, tcp.RST, tcp.SYN, tcp.FIN, tcp.Window)
-			mServerSeq = addAck(tcp.Seq)
-			_, err := clientConn.WriteToUDP(tcp.Payload, clientUDPAddr)
-			// fmt.Println("send to udp socket")
-			checkError(err)
+		err = parser.DecodeLayers(data, &decodedLayers)
+		checkError(err)
+
+		for _, typ := range decodedLayers {
+			switch typ {
+			case layers.LayerTypeIPv4:
+			case layers.LayerTypeTCP:
+				mServerSeq = addAck(tcp.Seq)
+				_, err := clientConn.WriteToUDP(tcp.Payload, clientUDPAddr)
+				checkError(err)
+			}
 		}
-		// fmt.Println(hex.Dump(data))
 	}
 }
 
