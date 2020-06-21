@@ -12,6 +12,46 @@ import (
 
 var clientConn *net.UDPConn
 var clientUDPAddr *net.UDPAddr
+var mServerSeq uint32
+
+func handShake(tun *water.Interface) bool {
+	//发送SYN
+	pBuffer := gopacket.NewSerializeBuffer()
+	srcIP := net.ParseIP(clientTunSrcIP)
+	dstIP := net.ParseIP(clientTunDstIP)
+	fmt.Printf("client sending SYN... %s %d \n", dstIP, clientTunDstPort)
+	syn := makePacket(pBuffer, srcIP, dstIP, clientTunSrcPort, clientTunDstPort, true, false, nextSeq(), 0, nil)
+	_, err := tun.Write(syn)
+	checkError(err)
+	fmt.Println("client SYN sent")
+	//等待SYN+ACK
+	fmt.Println("client waiting for SYN+ACK")
+	rBuffer := make([]byte, 2000)
+	var serverSeq uint32
+	for {
+		len, err := tun.Read(rBuffer)
+		checkError(err)
+		tcpPacket := parsePacket(rBuffer[:len])
+		if tcpPacket == nil {
+			continue
+		}
+
+		if tcpPacket.SYN && tcpPacket.ACK {
+			serverSeq = tcpPacket.Seq
+			break
+		}
+	}
+	fmt.Println("client got SYN+ACK ")
+
+	//发送ACK
+	fmt.Println("client sending ACK")
+	mServerSeq = serverSeq + 1
+	ack := makePacket(pBuffer, srcIP, dstIP, clientTunSrcPort, clientTunDstPort, false, true, nextSeq(), mServerSeq, nil)
+	_, err = tun.Write(ack)
+	checkError(err)
+	fmt.Println("client ACK sent")
+	return true
+}
 
 func clientTunToSocket(tun *water.Interface) {
 	fmt.Println("client tun")
@@ -75,16 +115,16 @@ func clientSocketToTun(socketListenPort string, tun *water.Interface, serverIP s
 		tcpL := &layers.TCP{
 			SrcPort: layers.TCPPort(8888),
 			DstPort: layers.TCPPort(serverPort),
-			Seq:     1,
+			Seq:     nextSeq(),
 			Ack:     0,
-			NS:      true,
+			NS:      false,
 			CWR:     false,
 			ECE:     false,
 			URG:     false,
-			ACK:     false,
+			ACK:     true,
 			PSH:     false,
 			RST:     false,
-			SYN:     true,
+			SYN:     false,
 			FIN:     false,
 			Window:  60000,
 		}

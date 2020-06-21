@@ -1,3 +1,2 @@
 go build
 scp -P 22 faketcp root@36.255.222.252:/root/faketcp/
-sudo ./faketcp

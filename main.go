@@ -11,18 +11,36 @@ import (
 	"github.com/songgao/water"
 )
 
+var clientSocketListenPort = "21007"
+
+var clientTunDstIP = "36.255.222.252"
+var clientTunDstPort = 12271
+var clientTunSrcIP = "10.1.1.2"
+var clientTunSrcPort = 8888
+
+var serverTunSrcPort = clientTunDstPort
+var serverTunSrcIP = "10.1.1.2"
+var serverSocketTo = "127.0.0.1:21007"
+var seqNum uint32
+
 func main() {
 	isServer := flag.Bool("s", false, "is server")
 	flag.Parse()
+	seqNum = 1024
 
 	tun := createTUN("faketcp")
 
+	fmt.Println("setup tun ip ")
+	bufio.NewReader(os.Stdin).ReadString('\n')
+
 	if *isServer {
+		serverHandShake(tun)
 		go serverTunToSocket(tun)
-		go serverSocketToTun(tun, "127.0.0.1:21007", 12271)
+		go serverSocketToTun(tun, serverSocketTo, serverTunSrcPort)
 	} else {
+		handShake(tun)
 		go clientTunToSocket(tun)
-		go clientSocketToTun("21007", tun, "36.255.222.252", 12271)
+		go clientSocketToTun(clientSocketListenPort, tun, clientTunDstIP, clientTunDstPort)
 	}
 	reader := bufio.NewReader(os.Stdin)
 	reader.ReadString('\n')
