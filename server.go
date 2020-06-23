@@ -106,6 +106,8 @@ func serverSocketToTun(tun *water.Interface, serverSendto string, srcPort int) {
 	}
 
 	buffer := make([]byte, 2000)
+	ipL := &layers.IPv4{}
+	tcpL := &layers.TCP{}
 	for {
 		len, err := serverConn.Read(buffer[0:])
 		if err != nil {
@@ -114,38 +116,33 @@ func serverSocketToTun(tun *water.Interface, serverSendto string, srcPort int) {
 		}
 
 		// fmt.Printf("server read udp len %d\n", len)
+		ipL.Version = 4
+		ipL.TOS = 0
+		ipL.TTL = 60
+		ipL.Id = 10
+		ipL.Protocol = 6
+		ipL.Flags = 0b010
+		ipL.SrcIP = net.IP{10, 1, 1, 2}
+		ipL.DstIP = peerIP
 
-		ipL := &layers.IPv4{
-			Version:  4,
-			TOS:      0,
-			TTL:      60,
-			Id:       10,
-			Protocol: 6,
-			Flags:    0b010,
-			SrcIP:    net.IP{10, 1, 1, 2},
-			DstIP:    peerIP,
-		}
-		tcpL := &layers.TCP{
-			SrcPort: layers.TCPPort(srcPort),
-			DstPort: layers.TCPPort(peerPort),
-			Seq:     nextSeq(),
-			Ack:     mClientSeq,
-			NS:      false,
-			CWR:     false,
-			ECE:     false,
-			URG:     false,
-			ACK:     true,
-			PSH:     false,
-			RST:     false,
-			SYN:     false,
-			FIN:     false,
-			Window:  1600,
-		}
+		tcpL.SrcPort = layers.TCPPort(srcPort)
+		tcpL.DstPort = layers.TCPPort(peerPort)
+		tcpL.Seq = nextSeq()
+		tcpL.Ack = mClientSeq
+		tcpL.NS = false
+		tcpL.CWR = false
+		tcpL.ECE = false
+		tcpL.URG = false
+		tcpL.ACK = true
+		tcpL.PSH = false
+		tcpL.RST = false
+		tcpL.SYN = false
+		tcpL.FIN = false
+		tcpL.Window = 1600
+
 		tcpL.SetNetworkLayerForChecksum(ipL)
-		err = gopacket.SerializeLayers(buf, opts,
-			ipL,
-			tcpL,
-			gopacket.Payload(buffer[:len]))
+
+		err = gopacket.SerializeLayers(buf, opts, ipL, tcpL, gopacket.Payload(buffer[:len]))
 		checkError(err)
 
 		outPacket := buf.Bytes()
