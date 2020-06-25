@@ -1,2 +1,2 @@
 go build
-scp -P 12266 faketcp root@120.240.47.66:/root/faketcp/
+scp faketcp qishui@192.168.8.10:/home/qishui/faketcp
