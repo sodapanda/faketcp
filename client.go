@@ -84,13 +84,13 @@ func clientTunToSocket(tun *water.Interface) {
 
 func clientSocketToTun(socketListenPort string, tun *water.Interface, serverIP string, serverPort int) {
 	buffer := make([]byte, 2000)
+	pBuffer := make([]byte, 2000)
 	udpAddr, err := net.ResolveUDPAddr("udp4", ":"+socketListenPort)
 	checkError(err)
 	conn, err := net.ListenUDP("udp", udpAddr)
 	checkError(err)
 	fmt.Printf("client listen socket %s\n", udpAddr)
 	clientConn = conn
-	packetBuff := gopacket.NewSerializeBuffer()
 
 	for {
 		len, addr, err := conn.ReadFromUDP(buffer[0:])
@@ -100,49 +100,19 @@ func clientSocketToTun(socketListenPort string, tun *water.Interface, serverIP s
 		}
 		clientUDPAddr = addr
 
-		// fmt.Printf("client read udp %d\n", len)
+		fPacket := FPacket{}
+		fPacket.srcIP = net.IP{10, 1, 1, 2}.To4()
+		fPacket.dstIP = net.ParseIP(serverIP).To4()
+		fPacket.srcPort = 8888
+		fPacket.dstPort = uint16(serverPort)
+		fPacket.seqNum = nextSeq()
+		fPacket.ackNum = mServerSeq
+		fPacket.syn = false
+		fPacket.ack = true
 
-		opts := gopacket.SerializeOptions{
-			ComputeChecksums: true,
-			FixLengths:       true,
-		}
+		pLen := craftPacket(buffer[:len], pBuffer, &fPacket)
 
-		ipL := &layers.IPv4{
-			Version:  4,
-			TOS:      0,
-			TTL:      60,
-			Id:       10,
-			Protocol: 6,
-			Flags:    0b010,
-			SrcIP:    net.IP{10, 1, 1, 2},
-			DstIP:    net.ParseIP(serverIP),
-		}
-		tcpL := &layers.TCP{
-			SrcPort: layers.TCPPort(8888),
-			DstPort: layers.TCPPort(serverPort),
-			Seq:     nextSeq(),
-			Ack:     mServerSeq,
-			NS:      false,
-			CWR:     false,
-			ECE:     false,
-			URG:     false,
-			ACK:     true,
-			PSH:     false,
-			RST:     false,
-			SYN:     false,
-			FIN:     false,
-			Window:  1600,
-		}
-		tcpL.SetNetworkLayerForChecksum(ipL)
-		err = gopacket.SerializeLayers(packetBuff, opts,
-			ipL,
-			tcpL,
-			gopacket.Payload(buffer[:len]))
-		checkError(err)
-		outPacket := packetBuff.Bytes()
-		// fmt.Println(hex.Dump(outPacket))
-
-		_, err = tun.Write(outPacket)
+		_, err = tun.Write(pBuffer[:pLen])
 		checkError(err)
 		// fmt.Println("client send out by tun")
 	}
