@@ -3,13 +3,14 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
+	"net"
 	"testing"
 )
 
 func TestPacket(t *testing.T) {
 	fPacket := FPacket{
-		srcIP:   "\x0a\x01\x01\x01",
-		dstIP:   "\x0a\x01\x01\x02",
+		srcIP:   net.IP{10, 1, 1, 2}.To4(),
+		dstIP:   net.IP{10, 1, 1, 3}.To4(),
 		srcPort: 8888,
 		dstPort: 12270,
 		syn:     true,

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net"
 
@@ -99,57 +100,32 @@ func serverSocketToTun(tun *water.Interface, serverSendto string, srcPort int) {
 	conn, err := net.DialUDP("udp", nil, udpAddr)
 	checkError(err)
 	serverConn = conn
-	buf := gopacket.NewSerializeBuffer()
-	opts := gopacket.SerializeOptions{
-		ComputeChecksums: true,
-		FixLengths:       true,
-	}
 
 	buffer := make([]byte, 2000)
-	ipL := &layers.IPv4{}
-	tcpL := &layers.TCP{}
+	pBuffer := make([]byte, 2000)
+
 	for {
 		len, err := serverConn.Read(buffer[0:])
 		if err != nil {
 			fmt.Println("server read udp error")
 			continue
 		}
-
-		// fmt.Printf("server read udp len %d\n", len)
-		ipL.Version = 4
-		ipL.TOS = 0
-		ipL.TTL = 60
-		ipL.Id = 10
-		ipL.Protocol = 6
-		ipL.Flags = 0b010
-		ipL.SrcIP = net.IP{10, 1, 1, 2}
-		ipL.DstIP = peerIP
-
-		tcpL.SrcPort = layers.TCPPort(srcPort)
-		tcpL.DstPort = layers.TCPPort(peerPort)
-		tcpL.Seq = nextSeq()
-		tcpL.Ack = mClientSeq
-		tcpL.NS = false
-		tcpL.CWR = false
-		tcpL.ECE = false
-		tcpL.URG = false
-		tcpL.ACK = true
-		tcpL.PSH = false
-		tcpL.RST = false
-		tcpL.SYN = false
-		tcpL.FIN = false
-		tcpL.Window = 1600
-
-		tcpL.SetNetworkLayerForChecksum(ipL)
-
-		err = gopacket.SerializeLayers(buf, opts, ipL, tcpL, gopacket.Payload(buffer[:len]))
-		checkError(err)
-
-		outPacket := buf.Bytes()
-		// fmt.Println(hex.Dump(outPacket))
-
+		fmt.Println("src port ", srcPort, " dst port ", peerPort)
+		fPacket := FPacket{
+			srcIP:   net.IP{10, 1, 1, 2}.To4(),
+			dstIP:   peerIP.To4(),
+			srcPort: uint16(srcPort),
+			dstPort: uint16(peerPort),
+			syn:     false,
+			ack:     true,
+			seqNum:  nextSeq(),
+			ackNum:  mClientSeq,
+		}
+		pLen := craftPacket(buffer[:len], pBuffer, &fPacket)
+		outPacket := pBuffer[:pLen]
 		_, err = tun.Write(outPacket)
 		checkError(err)
 		// fmt.Println("send from tun")
+		fmt.Println(hex.Dump(outPacket))
 	}
 }

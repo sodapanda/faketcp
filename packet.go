@@ -10,8 +10,8 @@ var ipHeaderLength = 20
 
 //FPacket IP and TCP header info
 type FPacket struct {
-	srcIP   string
-	dstIP   string
+	srcIP   []byte
+	dstIP   []byte
 	srcPort uint16
 	dstPort uint16
 	syn     bool
@@ -24,10 +24,10 @@ func craftPacket(payload []byte, result []byte, fPacket *FPacket) int {
 	ipPacket := header.IPv4(result[0:])
 	//IPv4 header
 	ipHeader := header.IPv4Fields{}
-	ipHeader.IHL = 20
+	ipHeader.IHL = header.IPv4MinimumSize
 	ipHeader.TOS = 0
-	ipHeader.TotalLength = uint16(20 + len(payload))
-	ipHeader.ID = 0
+	ipHeader.TotalLength = uint16(header.IPv4MinimumSize + header.TCPMinimumSize + len(payload))
+	ipHeader.ID = 10
 	ipHeader.Flags = 0b010
 	ipHeader.FragmentOffset = 0
 	ipHeader.TTL = 60
@@ -37,7 +37,7 @@ func craftPacket(payload []byte, result []byte, fPacket *FPacket) int {
 	ipHeader.DstAddr = tcpip.Address(fPacket.dstIP)
 
 	ipPacket.Encode(&ipHeader)
-	ipPacket.SetChecksum(ipPacket.CalculateChecksum())
+	ipPacket.SetChecksum(^ipPacket.CalculateChecksum())
 
 	//TCP header
 	tcpPacket := header.TCP(result[header.IPv4MinimumSize:])
@@ -65,7 +65,7 @@ func craftPacket(payload []byte, result []byte, fPacket *FPacket) int {
 		tcpip.Address(fPacket.dstIP),
 		uint16(header.TCPMinimumSize+len(payload)))
 	xsum = header.Checksum(payload, xsum)
-	tcpPacket.SetChecksum(tcpPacket.CalculateChecksum(xsum))
+	tcpPacket.SetChecksum(^tcpPacket.CalculateChecksum(xsum))
 
 	//payload
 	copy(result[header.IPv4MinimumSize+header.TCPMinimumSize:], payload)
