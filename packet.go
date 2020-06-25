@@ -18,6 +18,7 @@ type FPacket struct {
 	ack     bool
 	seqNum  uint32
 	ackNum  uint32
+	payload []byte
 }
 
 func craftPacket(payload []byte, result []byte, fPacket *FPacket) int {
@@ -47,14 +48,13 @@ func craftPacket(payload []byte, result []byte, fPacket *FPacket) int {
 	tcpHeader.SeqNum = fPacket.seqNum
 	tcpHeader.AckNum = fPacket.ackNum
 	tcpHeader.DataOffset = header.TCPMinimumSize
-	var tcpFlag uint8
+	tcpHeader.Flags = 0
 	if fPacket.syn {
-		tcpFlag = header.TCPFlagSyn
+		tcpHeader.Flags = tcpHeader.Flags | header.TCPFlagSyn
 	}
 	if fPacket.ack {
-		tcpFlag = tcpFlag | header.TCPFlagAck
+		tcpHeader.Flags = tcpHeader.Flags | header.TCPFlagAck
 	}
-	tcpHeader.Flags = tcpFlag
 	tcpHeader.WindowSize = 16000
 	tcpHeader.Checksum = 0
 	tcpHeader.UrgentPointer = 0
@@ -70,4 +70,19 @@ func craftPacket(payload []byte, result []byte, fPacket *FPacket) int {
 	//payload
 	copy(result[header.IPv4MinimumSize+header.TCPMinimumSize:], payload)
 	return header.IPv4MinimumSize + header.TCPMinimumSize + len(payload)
+}
+
+func unpacket(data []byte, fPacket *FPacket) {
+	ipHeader := header.IPv4(data)
+	tcpHeader := header.TCP(data[header.IPv4MinimumSize:])
+
+	fPacket.srcIP = []byte(ipHeader.SourceAddress().To4())
+	fPacket.dstIP = []byte(ipHeader.DestinationAddress().To4())
+	fPacket.srcPort = tcpHeader.SourcePort()
+	fPacket.dstPort = tcpHeader.DestinationPort()
+	fPacket.syn = tcpHeader.Flags()&header.TCPFlagSyn != 0
+	fPacket.ack = tcpHeader.Flags()&header.TCPFlagAck != 0
+	fPacket.seqNum = tcpHeader.SequenceNumber()
+	fPacket.ackNum = tcpHeader.AckNumber()
+	fPacket.payload = data[header.IPv4MinimumSize+header.TCPMinimumSize:]
 }
