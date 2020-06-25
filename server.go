@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/hex"
 	"fmt"
 	"net"
 
@@ -65,11 +64,14 @@ func serverTunToSocket(tun *water.Interface) {
 	fmt.Println("server tun to socket")
 	buffer := make([]byte, 2000)
 
+	fPacket := FPacket{}
+	fPacket.srcIP = make([]byte, 4)
+	fPacket.dstIP = make([]byte, 4)
+
 	for {
 		len, err := tun.Read(buffer)
 		checkError(err)
 		data := buffer[:len]
-		fPacket := FPacket{}
 		unpacket(data, &fPacket)
 		peerIP = fPacket.srcIP
 		peerPort = fPacket.srcPort
@@ -97,7 +99,6 @@ func serverSocketToTun(tun *water.Interface, serverSendto string, srcPort int) {
 			fmt.Println("server read udp error")
 			continue
 		}
-		fmt.Println("src port ", srcPort, " dst port ", peerPort)
 		fPacket := FPacket{
 			srcIP:   net.IP{10, 1, 1, 2}.To4(),
 			dstIP:   peerIP.To4(),
@@ -113,6 +114,6 @@ func serverSocketToTun(tun *water.Interface, serverSendto string, srcPort int) {
 		_, err = tun.Write(outPacket)
 		checkError(err)
 		// fmt.Println("send from tun")
-		fmt.Println(hex.Dump(outPacket))
+		// fmt.Println(hex.Dump(outPacket))
 	}
 }

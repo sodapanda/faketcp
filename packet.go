@@ -76,8 +76,9 @@ func unpacket(data []byte, fPacket *FPacket) {
 	ipHeader := header.IPv4(data)
 	tcpHeader := header.TCP(data[header.IPv4MinimumSize:])
 
-	fPacket.srcIP = []byte(ipHeader.SourceAddress().To4())
-	fPacket.dstIP = []byte(ipHeader.DestinationAddress().To4())
+	copy(fPacket.srcIP, ipHeader.SourceAddress().To4())
+	copy(fPacket.dstIP, ipHeader.DestinationAddress().To4())
+
 	fPacket.srcPort = tcpHeader.SourcePort()
 	fPacket.dstPort = tcpHeader.DestinationPort()
 	fPacket.syn = tcpHeader.Flags()&header.TCPFlagSyn != 0

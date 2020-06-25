@@ -5,7 +5,6 @@ import (
 	"net"
 
 	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
 	"github.com/songgao/water"
 )
 
@@ -55,30 +54,16 @@ func handShake(tun *water.Interface) bool {
 func clientTunToSocket(tun *water.Interface) {
 	fmt.Println("client tun")
 	buffer := make([]byte, 2000)
-	var ip4 layers.IPv4
-	var tcp layers.TCP
-	var payload gopacket.Payload
-
-	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeIPv4, &ip4, &tcp, &payload)
-	decodedLayers := make([]gopacket.LayerType, 0, 10)
 
 	for {
 		n, err := tun.Read(buffer)
 		checkError(err)
 		data := buffer[:n]
-
-		err = parser.DecodeLayers(data, &decodedLayers)
+		fPacket := FPacket{}
+		unpacket(data, &fPacket)
+		mServerSeq = addAck(fPacket.seqNum)
+		_, err = clientConn.WriteToUDP(fPacket.payload, clientUDPAddr)
 		checkError(err)
-
-		for _, typ := range decodedLayers {
-			switch typ {
-			case layers.LayerTypeIPv4:
-			case layers.LayerTypeTCP:
-				mServerSeq = addAck(tcp.Seq)
-				_, err := clientConn.WriteToUDP(tcp.Payload, clientUDPAddr)
-				checkError(err)
-			}
-		}
 	}
 }
 
