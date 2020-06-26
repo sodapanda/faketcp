@@ -15,6 +15,7 @@ var peerIP net.IP
 var peerPort uint16
 var mClientSeq uint32
 var mServerQueue *blockingQueues.BlockingQueue
+var serverDrop int
 
 func serverHandShake(tun *water.Interface) {
 	mServerQueue, _ = blockingQueues.NewArrayBlockingQueue(300)
@@ -103,6 +104,10 @@ func serverSocketToQueue(serverSendto string) {
 		fBuf.len = len
 		_, err := mServerQueue.Push(fBuf)
 		if err != nil {
+			serverDrop++
+			if serverDrop > 1000000 {
+				serverDrop = 0
+			}
 			poolPut(fBuf)
 		}
 	}
@@ -127,8 +132,8 @@ func serverQueueToTun(tun *water.Interface, srcPort int) {
 		}
 		pLen := craftPacket(data, pBuffer, &fPacket)
 		outPacket := pBuffer[:pLen]
-		poolPut(fBuf)
 		_, err := tun.Write(outPacket)
+		poolPut(fBuf)
 		checkError(err)
 	}
 }

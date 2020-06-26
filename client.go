@@ -6,13 +6,17 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/songgao/water"
+	"github.com/theodesp/blockingQueues"
 )
 
 var clientConn *net.UDPConn
 var clientUDPAddr *net.UDPAddr
 var mServerSeq uint32
+var mClientQueue *blockingQueues.BlockingQueue
+var clientDrop int
 
 func handShake(tun *water.Interface) bool {
+	mClientQueue, _ = blockingQueues.NewArrayBlockingQueue(300)
 	//发送SYN
 	pBuffer := gopacket.NewSerializeBuffer()
 	srcIP := net.ParseIP(clientTunSrcIP)
@@ -67,9 +71,9 @@ func clientTunToSocket(tun *water.Interface) {
 	}
 }
 
-func clientSocketToTun(socketListenPort string, tun *water.Interface, serverIP string, serverPort int) {
-	buffer := make([]byte, 2000)
-	pBuffer := make([]byte, 2000)
+func clientSocketToQueue(socketListenPort string) {
+	fmt.Println("client socket to queue")
+
 	udpAddr, err := net.ResolveUDPAddr("udp4", ":"+socketListenPort)
 	checkError(err)
 	conn, err := net.ListenUDP("udp", udpAddr)
@@ -77,14 +81,31 @@ func clientSocketToTun(socketListenPort string, tun *water.Interface, serverIP s
 	fmt.Printf("client listen socket %s\n", udpAddr)
 	clientConn = conn
 
-	for {
-		len, addr, err := conn.ReadFromUDP(buffer[0:])
-		if err != nil {
-			fmt.Println("client read udp error" + err.Error())
-			continue
-		}
-		clientUDPAddr = addr
+	tmpBuf := make([]byte, 2000)
 
+	for {
+		len, addr, _ := conn.ReadFromUDP(tmpBuf)
+		clientUDPAddr = addr
+		fBuf := poolGet()
+		copy(fBuf.data, tmpBuf[:len])
+		fBuf.len = len
+		_, err := mClientQueue.Push(fBuf)
+		if err != nil {
+			clientDrop++
+			if clientDrop > 1000000 {
+				clientDrop = 0
+			}
+			poolPut(fBuf)
+		}
+	}
+}
+
+func clientQueueToTun(tun *water.Interface, serverIP string, serverPort int) {
+	pBuffer := make([]byte, 2000)
+	for {
+		item, _ := mClientQueue.Get()
+		fBuf := item.(*FBuffer)
+		data := fBuf.data[:fBuf.len]
 		fPacket := FPacket{}
 		fPacket.srcIP = net.IP{10, 1, 1, 2}.To4()
 		fPacket.dstIP = net.ParseIP(serverIP).To4()
@@ -95,10 +116,10 @@ func clientSocketToTun(socketListenPort string, tun *water.Interface, serverIP s
 		fPacket.syn = false
 		fPacket.ack = true
 
-		pLen := craftPacket(buffer[:len], pBuffer, &fPacket)
+		pLen := craftPacket(data, pBuffer, &fPacket)
 
-		_, err = tun.Write(pBuffer[:pLen])
+		_, err := tun.Write(pBuffer[:pLen])
+		poolPut(fBuf)
 		checkError(err)
-		// fmt.Println("client send out by tun")
 	}
 }

@@ -4,8 +4,6 @@ import (
 	"sync"
 )
 
-var poolCount int
-
 //FBuffer data and len
 type FBuffer struct {
 	data []byte
@@ -14,7 +12,6 @@ type FBuffer struct {
 
 var bufPool = sync.Pool{
 	New: func() interface{} {
-		poolCount = poolCount + 1
 		buffer := FBuffer{}
 		buffer.data = make([]byte, 2000)
 		return &buffer
