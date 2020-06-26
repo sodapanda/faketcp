@@ -7,14 +7,18 @@ import (
 	"github.com/google/gopacket"
 
 	"github.com/songgao/water"
+	"github.com/theodesp/blockingQueues"
 )
 
 var serverConn *net.UDPConn
 var peerIP net.IP
 var peerPort uint16
 var mClientSeq uint32
+var mServerQueue *blockingQueues.BlockingQueue
 
 func serverHandShake(tun *water.Interface) {
+	mServerQueue, _ = blockingQueues.NewArrayBlockingQueue(300)
+
 	//等待syn
 	fmt.Println("server waiting for SYN")
 	rBuffer := make([]byte, 2000)
@@ -82,23 +86,35 @@ func serverTunToSocket(tun *water.Interface) {
 
 }
 
-func serverSocketToTun(tun *water.Interface, serverSendto string, srcPort int) {
-	fmt.Println("server socket to tun")
+func serverSocketToQueue(serverSendto string) {
+	fmt.Println("server socket to queue")
+
 	udpAddr, err := net.ResolveUDPAddr("udp4", serverSendto)
 	checkError(err)
 	conn, err := net.DialUDP("udp", nil, udpAddr)
 	checkError(err)
 	serverConn = conn
-
-	buffer := make([]byte, 2000)
-	pBuffer := make([]byte, 2000)
+	tmpBuf := make([]byte, 2000)
 
 	for {
-		len, err := serverConn.Read(buffer[0:])
+		len, _ := serverConn.Read(tmpBuf)
+		fBuf := poolGet()
+		copy(fBuf.data, tmpBuf[:len])
+		fBuf.len = len
+		_, err := mServerQueue.Push(fBuf)
 		if err != nil {
-			fmt.Println("server read udp error")
-			continue
+			poolPut(fBuf)
 		}
+	}
+}
+
+func serverQueueToTun(tun *water.Interface, srcPort int) {
+	pBuffer := make([]byte, 2000)
+	for {
+		item, _ := mServerQueue.Get()
+		fBuf := item.(*FBuffer)
+		data := fBuf.data[:fBuf.len]
+
 		fPacket := FPacket{
 			srcIP:   net.IP{10, 1, 1, 2}.To4(),
 			dstIP:   peerIP.To4(),
@@ -109,11 +125,10 @@ func serverSocketToTun(tun *water.Interface, serverSendto string, srcPort int) {
 			seqNum:  nextSeq(),
 			ackNum:  mClientSeq,
 		}
-		pLen := craftPacket(buffer[:len], pBuffer, &fPacket)
+		pLen := craftPacket(data, pBuffer, &fPacket)
 		outPacket := pBuffer[:pLen]
-		_, err = tun.Write(outPacket)
+		poolPut(fBuf)
+		_, err := tun.Write(outPacket)
 		checkError(err)
-		// fmt.Println("send from tun")
-		// fmt.Println(hex.Dump(outPacket))
 	}
 }

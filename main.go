@@ -36,7 +36,8 @@ func main() {
 	if *isServer {
 		serverHandShake(tun)
 		go serverTunToSocket(tun)
-		go serverSocketToTun(tun, serverSocketTo, serverTunSrcPort)
+		go serverSocketToQueue(serverSocketTo)
+		go serverQueueToTun(tun, serverTunSrcPort)
 	} else {
 		handShake(tun)
 		go clientTunToSocket(tun)
@@ -44,6 +45,7 @@ func main() {
 	}
 	reader := bufio.NewReader(os.Stdin)
 	reader.ReadString('\n')
+	fmt.Println("pool count is ", poolCount)
 }
 
 func createTUN(name string) *water.Interface {
