@@ -7,16 +7,18 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 
 	"github.com/songgao/water"
 )
 
 var clientSocketListenPort = "21007"
 
-var clientTunDstIP = "192.168.8.10"
+var clientTunDstIP = "120.240.47.66"
 var clientTunDstPort = 12272
 var clientTunSrcIP = "10.1.1.2"
 var clientTunSrcPort = 8888
+var queueLen = 600
 
 var serverTunSrcPort = clientTunDstPort
 var serverTunSrcIP = "10.1.1.2"
@@ -25,13 +27,23 @@ var seqNum uint32
 
 func main() {
 	isServer := flag.Bool("s", false, "is server")
+	fClientTunDstIP := flag.String("clientTunDstIP", "", "dst ip")
+	fClientTunDstPort := flag.Int("clientTunDstPort", 0, "dst port")
+	fQueueLen := flag.Int("queueLen", 0, "queue len")
 	flag.Parse()
+
 	seqNum = 1024
+	clientTunDstIP = *fClientTunDstIP
+	clientTunDstPort = *fClientTunDstPort
+	serverTunSrcPort = clientTunDstPort
+	queueLen = *fQueueLen
 
 	tun := createTUN("faketcp")
 
-	fmt.Println("setup tun ip ")
-	bufio.NewReader(os.Stdin).ReadString('\n')
+	cmd := exec.Command("ip", "address", "add", "10.1.1.1/24", "dev", "faketcp")
+	cmd.Run()
+	cmd = exec.Command("ip", "link", "set", "up", "dev", "faketcp")
+	cmd.Run()
 
 	if *isServer {
 		serverHandShake(tun)
@@ -39,6 +51,8 @@ func main() {
 		go serverSocketToQueue(serverSocketTo)
 		go serverQueueToTun(tun, serverTunSrcPort)
 	} else {
+		fmt.Println("server reader?")
+		bufio.NewReader(os.Stdin).ReadString('\n')
 		handShake(tun)
 		go clientTunToSocket(tun)
 		go clientSocketToQueue(clientSocketListenPort)
@@ -48,6 +62,14 @@ func main() {
 	reader.ReadString('\n')
 	fmt.Println("server drop ", serverDrop)
 	fmt.Println("client drop ", clientDrop)
+	fmt.Println("server send ", serverSendCount)
+	fmt.Println("server recieve count ", serverReceiveCount)
+	fmt.Println("client send count ", clientSendCount)
+	fmt.Println("client receive count ", clientReceiveCount)
+	if *isServer {
+		fmt.Println("serverTunToSocketReadMaxLen ", serverTunToSocketReadMaxLen)
+		fmt.Println("serverSocketReadMaxLen", serverSocketReadMaxLen)
+	}
 }
 
 func createTUN(name string) *water.Interface {

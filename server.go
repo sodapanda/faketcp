@@ -16,9 +16,11 @@ var peerPort uint16
 var mClientSeq uint32
 var mServerQueue *blockingQueues.BlockingQueue
 var serverDrop int
+var serverSendCount int
+var serverReceiveCount int
 
 func serverHandShake(tun *water.Interface) {
-	mServerQueue, _ = blockingQueues.NewArrayBlockingQueue(300)
+	mServerQueue, _ = blockingQueues.NewArrayBlockingQueue(uint64(queueLen))
 
 	//等待syn
 	fmt.Println("server waiting for SYN")
@@ -65,6 +67,8 @@ func serverHandShake(tun *water.Interface) {
 	fmt.Println("server got ACK")
 }
 
+var serverTunToSocketReadMaxLen int
+
 func serverTunToSocket(tun *water.Interface) {
 	fmt.Println("server tun to socket")
 	buffer := make([]byte, 2000)
@@ -75,6 +79,9 @@ func serverTunToSocket(tun *water.Interface) {
 
 	for {
 		len, err := tun.Read(buffer)
+		if len > serverTunToSocketReadMaxLen {
+			serverTunToSocketReadMaxLen = len
+		}
 		checkError(err)
 		data := buffer[:len]
 		unpacket(data, &fPacket)
@@ -82,10 +89,13 @@ func serverTunToSocket(tun *water.Interface) {
 		peerPort = fPacket.srcPort
 		mClientSeq = addAck(fPacket.seqNum)
 		_, err = serverConn.Write(fPacket.payload)
+		serverReceiveCount++
 		checkError(err)
 	}
 
 }
+
+var serverSocketReadMaxLen int
 
 func serverSocketToQueue(serverSendto string) {
 	fmt.Println("server socket to queue")
@@ -99,6 +109,9 @@ func serverSocketToQueue(serverSendto string) {
 
 	for {
 		len, _ := serverConn.Read(tmpBuf)
+		if len > serverSocketReadMaxLen {
+			serverSocketReadMaxLen = len
+		}
 		fBuf := poolGet()
 		copy(fBuf.data, tmpBuf[:len])
 		fBuf.len = len
@@ -133,6 +146,7 @@ func serverQueueToTun(tun *water.Interface, srcPort int) {
 		pLen := craftPacket(data, pBuffer, &fPacket)
 		outPacket := pBuffer[:pLen]
 		_, err := tun.Write(outPacket)
+		serverSendCount++
 		poolPut(fBuf)
 		checkError(err)
 	}

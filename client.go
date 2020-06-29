@@ -14,9 +14,11 @@ var clientUDPAddr *net.UDPAddr
 var mServerSeq uint32
 var mClientQueue *blockingQueues.BlockingQueue
 var clientDrop int
+var clientSendCount int
+var clientReceiveCount int
 
 func handShake(tun *water.Interface) bool {
-	mClientQueue, _ = blockingQueues.NewArrayBlockingQueue(300)
+	mClientQueue, _ = blockingQueues.NewArrayBlockingQueue(uint64(queueLen))
 	//发送SYN
 	pBuffer := gopacket.NewSerializeBuffer()
 	srcIP := net.ParseIP(clientTunSrcIP)
@@ -67,6 +69,7 @@ func clientTunToSocket(tun *water.Interface) {
 		unpacket(data, &fPacket)
 		mServerSeq = addAck(fPacket.seqNum)
 		_, err = clientConn.WriteToUDP(fPacket.payload, clientUDPAddr)
+		clientReceiveCount++
 		checkError(err)
 	}
 }
@@ -119,6 +122,7 @@ func clientQueueToTun(tun *water.Interface, serverIP string, serverPort int) {
 		pLen := craftPacket(data, pBuffer, &fPacket)
 
 		_, err := tun.Write(pBuffer[:pLen])
+		clientSendCount++
 		poolPut(fBuf)
 		checkError(err)
 	}
