@@ -23,7 +23,6 @@ var queueLen = 600
 var serverTunSrcPort = clientTunDstPort
 var serverTunSrcIP = "10.1.1.2"
 var serverSocketTo = "127.0.0.1:21007"
-var seqNum uint32
 
 func main() {
 	isServer := flag.Bool("s", false, "is server")
@@ -32,7 +31,6 @@ func main() {
 	fQueueLen := flag.Int("queueLen", 0, "queue len")
 	flag.Parse()
 
-	seqNum = 1024
 	clientTunDstIP = *fClientTunDstIP
 	clientTunDstPort = *fClientTunDstPort
 	serverTunSrcPort = clientTunDstPort
