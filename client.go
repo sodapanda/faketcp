@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"github.com/google/gopacket"
+	"github.com/google/netstack/tcpip/header"
 	"github.com/songgao/water"
 	"github.com/theodesp/blockingQueues"
 )
@@ -86,10 +87,10 @@ func clientSocketToQueue(socketListenPort string) {
 
 	for {
 		fBuf := poolGet()
-		len, addr, _ := conn.ReadFromUDP(fBuf.data)
+		len, addr, _ := conn.ReadFromUDP(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
 		clientUDPAddr = addr
 
-		fBuf.len = len
+		fBuf.len = len + header.IPv4MinimumSize + header.TCPMinimumSize
 		_, err := mClientQueue.Push(fBuf)
 		if err != nil {
 			clientDrop++
@@ -102,11 +103,11 @@ func clientSocketToQueue(socketListenPort string) {
 }
 
 func clientQueueToTun(tun *water.Interface, serverIP string, serverPort int) {
-	pBuffer := make([]byte, 2000)
 	for {
 		item, _ := mClientQueue.Get()
 		fBuf := item.(*FBuffer)
-		data := fBuf.data[:fBuf.len]
+		packet := fBuf.data[:fBuf.len]
+
 		fPacket := FPacket{}
 		fPacket.srcIP = net.IP{10, 1, 1, 2}.To4()
 		fPacket.dstIP = net.ParseIP(serverIP).To4()
@@ -117,9 +118,9 @@ func clientQueueToTun(tun *water.Interface, serverIP string, serverPort int) {
 		fPacket.syn = false
 		fPacket.ack = true
 
-		pLen := craftPacket(data, pBuffer, &fPacket)
+		craftPacket(packet, &fPacket)
 
-		_, err := tun.Write(pBuffer[:pLen])
+		_, err := tun.Write(packet)
 		clientSendCount++
 		poolPut(fBuf)
 		checkError(err)

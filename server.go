@@ -3,9 +3,11 @@ package main
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/google/gopacket"
 
+	"github.com/google/netstack/tcpip/header"
 	"github.com/songgao/water"
 	"github.com/theodesp/blockingQueues"
 )
@@ -97,7 +99,7 @@ func serverTunToSocket(tun *water.Interface) {
 
 var serverSocketReadMaxLen int
 
-func serverSocketToQueue(serverSendto string) {
+func serverSocketToQueue(serverSendto string, srcPort int) {
 	fmt.Println("server socket to queue")
 
 	udpAddr, err := net.ResolveUDPAddr("udp4", serverSendto)
@@ -108,30 +110,13 @@ func serverSocketToQueue(serverSendto string) {
 
 	for {
 		fBuf := poolGet()
-		len, _ := serverConn.Read(fBuf.data)
+		len, _ := serverConn.Read(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
 		if len > serverSocketReadMaxLen {
 			serverSocketReadMaxLen = len
 		}
-		fBuf.len = len
-		_, err := mServerQueue.Push(fBuf)
-		if err != nil {
-			serverDrop++
-			println("server drop packet ", serverDrop)
-
-			if serverDrop > 1000000 {
-				serverDrop = 0
-			}
-			poolPut(fBuf)
-		}
-	}
-}
-
-func serverQueueToTun(tun *water.Interface, srcPort int) {
-	pBuffer := make([]byte, 2000)
-	for {
-		item, _ := mServerQueue.Get()
-		fBuf := item.(*FBuffer)
-		data := fBuf.data[:fBuf.len]
+		//这里不能改变pool里每个对象的slice大小，因为改小了的话，下一个包可能不够用
+		fBuf.len = len + header.IPv4MinimumSize + header.TCPMinimumSize
+		//在这里包装成IP包 入队列直接是IP包
 
 		fPacket := FPacket{
 			srcIP:   net.IP{10, 1, 1, 2}.To4(),
@@ -143,9 +128,30 @@ func serverQueueToTun(tun *water.Interface, srcPort int) {
 			seqNum:  nextSeq(),
 			ackNum:  mClientSeq,
 		}
-		pLen := craftPacket(data, pBuffer, &fPacket)
-		outPacket := pBuffer[:pLen]
-		_, err := tun.Write(outPacket)
+		craftPacket(fBuf.data[:fBuf.len], &fPacket)
+
+		_, err := mServerQueue.Push(fBuf)
+		if err != nil {
+			serverDrop++
+			println("server drop packet ", serverDrop)
+
+			if serverDrop > 1000000 {
+				serverDrop = 0
+			}
+			poolPut(fBuf)
+			//出现丢包就等一等
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+}
+
+func serverQueueToTun(tun *water.Interface) {
+	for {
+		item, _ := mServerQueue.Get()
+		fBuf := item.(*FBuffer)
+		data := fBuf.data[:fBuf.len]
+
+		_, err := tun.Write(data)
 		serverSendCount++
 		poolPut(fBuf)
 		checkError(err)

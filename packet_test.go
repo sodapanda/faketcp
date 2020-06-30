@@ -19,10 +19,8 @@ func TestPacket(t *testing.T) {
 		ackNum:  2,
 	}
 
-	payload := []byte{1, 2, 3, 4}
-	result := make([]byte, 1500)
-	len := craftPacket(payload, result, &fPacket)
+	packet := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}
+	len := craftPacket(packet, &fPacket)
 	fmt.Println("len =", len)
-	data := result[:len]
-	fmt.Println(hex.Dump(data))
+	fmt.Println(hex.Dump(packet))
 }

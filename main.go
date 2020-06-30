@@ -48,8 +48,8 @@ func main() {
 	if *isServer {
 		serverHandShake(tun)
 		go serverTunToSocket(tun)
-		go serverSocketToQueue(serverSocketTo)
-		go serverQueueToTun(tun, serverTunSrcPort)
+		go serverSocketToQueue(serverSocketTo, serverTunSrcPort)
+		go serverQueueToTun(tun)
 	} else {
 		fmt.Println("server reader?")
 		bufio.NewReader(os.Stdin).ReadString('\n')

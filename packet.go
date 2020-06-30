@@ -21,13 +21,14 @@ type FPacket struct {
 	payload []byte
 }
 
-func craftPacket(payload []byte, result []byte, fPacket *FPacket) int {
-	ipPacket := header.IPv4(result[0:])
+func craftPacket(packet []byte, fPacket *FPacket) int {
+	payload := packet[(header.IPv4MinimumSize + header.TCPMinimumSize):]
+	ipPacket := header.IPv4(packet[0:])
 	//IPv4 header
 	ipHeader := header.IPv4Fields{}
 	ipHeader.IHL = header.IPv4MinimumSize
 	ipHeader.TOS = 0
-	ipHeader.TotalLength = uint16(header.IPv4MinimumSize + header.TCPMinimumSize + len(payload))
+	ipHeader.TotalLength = uint16(len(packet))
 	ipHeader.ID = 10
 	ipHeader.Flags = 0b010
 	ipHeader.FragmentOffset = 0
@@ -41,7 +42,7 @@ func craftPacket(payload []byte, result []byte, fPacket *FPacket) int {
 	ipPacket.SetChecksum(^ipPacket.CalculateChecksum())
 
 	//TCP header
-	tcpPacket := header.TCP(result[header.IPv4MinimumSize:])
+	tcpPacket := header.TCP(packet[header.IPv4MinimumSize:])
 	tcpHeader := header.TCPFields{}
 	tcpHeader.SrcPort = fPacket.srcPort
 	tcpHeader.DstPort = fPacket.dstPort
@@ -63,13 +64,12 @@ func craftPacket(payload []byte, result []byte, fPacket *FPacket) int {
 	xsum := header.PseudoHeaderChecksum(tcp.ProtocolNumber,
 		tcpip.Address(fPacket.srcIP),
 		tcpip.Address(fPacket.dstIP),
-		uint16(header.TCPMinimumSize+len(payload)))
+		uint16(len(packet)-header.IPv4MinimumSize))
 	xsum = header.Checksum(payload, xsum)
 	tcpPacket.SetChecksum(^tcpPacket.CalculateChecksum(xsum))
 
 	//payload
-	copy(result[header.IPv4MinimumSize+header.TCPMinimumSize:], payload)
-	return header.IPv4MinimumSize + header.TCPMinimumSize + len(payload)
+	return len(packet)
 }
 
 func unpacket(data []byte, fPacket *FPacket) {
