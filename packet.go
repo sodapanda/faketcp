@@ -6,7 +6,7 @@ import (
 	"github.com/google/netstack/tcpip/transport/tcp"
 )
 
-var ipHeaderLength = 20
+var ipID uint16
 
 //FPacket IP and TCP header info
 type FPacket struct {
@@ -22,6 +22,7 @@ type FPacket struct {
 }
 
 func craftPacket(packet []byte, fPacket *FPacket) int {
+	ipID = getNextID(ipID)
 	payload := packet[(header.IPv4MinimumSize + header.TCPMinimumSize):]
 	ipPacket := header.IPv4(packet[0:])
 	//IPv4 header
@@ -29,7 +30,7 @@ func craftPacket(packet []byte, fPacket *FPacket) int {
 	ipHeader.IHL = header.IPv4MinimumSize
 	ipHeader.TOS = 0
 	ipHeader.TotalLength = uint16(len(packet))
-	ipHeader.ID = 10
+	ipHeader.ID = ipID
 	ipHeader.Flags = 0b010
 	ipHeader.FragmentOffset = 0
 	ipHeader.TTL = 60
