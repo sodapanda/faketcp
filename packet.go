@@ -55,7 +55,7 @@ func craftPacket(payload []byte, result []byte, fPacket *FPacket) int {
 	if fPacket.ack {
 		tcpHeader.Flags = tcpHeader.Flags | header.TCPFlagAck
 	}
-	tcpHeader.WindowSize = 16000
+	tcpHeader.WindowSize = 65000
 	tcpHeader.Checksum = 0
 	tcpHeader.UrgentPointer = 0
 

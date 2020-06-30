@@ -84,13 +84,11 @@ func clientSocketToQueue(socketListenPort string) {
 	fmt.Printf("client listen socket %s\n", udpAddr)
 	clientConn = conn
 
-	tmpBuf := make([]byte, 2000)
-
 	for {
-		len, addr, _ := conn.ReadFromUDP(tmpBuf)
-		clientUDPAddr = addr
 		fBuf := poolGet()
-		copy(fBuf.data, tmpBuf[:len])
+		len, addr, _ := conn.ReadFromUDP(fBuf.data)
+		clientUDPAddr = addr
+
 		fBuf.len = len
 		_, err := mClientQueue.Push(fBuf)
 		if err != nil {

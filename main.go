@@ -60,15 +60,17 @@ func main() {
 	}
 	reader := bufio.NewReader(os.Stdin)
 	reader.ReadString('\n')
-	fmt.Println("server drop ", serverDrop)
-	fmt.Println("client drop ", clientDrop)
-	fmt.Println("server send ", serverSendCount)
-	fmt.Println("server recieve count ", serverReceiveCount)
-	fmt.Println("client send count ", clientSendCount)
-	fmt.Println("client receive count ", clientReceiveCount)
+
 	if *isServer {
+		fmt.Println("server drop ", serverDrop)
+		fmt.Println("server send ", serverSendCount)
+		fmt.Println("server recieve count ", serverReceiveCount)
 		fmt.Println("serverTunToSocketReadMaxLen ", serverTunToSocketReadMaxLen)
 		fmt.Println("serverSocketReadMaxLen", serverSocketReadMaxLen)
+	} else {
+		fmt.Println("client drop ", clientDrop)
+		fmt.Println("client send count ", clientSendCount)
+		fmt.Println("client receive count ", clientReceiveCount)
 	}
 }
 

@@ -105,19 +105,19 @@ func serverSocketToQueue(serverSendto string) {
 	conn, err := net.DialUDP("udp", nil, udpAddr)
 	checkError(err)
 	serverConn = conn
-	tmpBuf := make([]byte, 2000)
 
 	for {
-		len, _ := serverConn.Read(tmpBuf)
+		fBuf := poolGet()
+		len, _ := serverConn.Read(fBuf.data)
 		if len > serverSocketReadMaxLen {
 			serverSocketReadMaxLen = len
 		}
-		fBuf := poolGet()
-		copy(fBuf.data, tmpBuf[:len])
 		fBuf.len = len
 		_, err := mServerQueue.Push(fBuf)
 		if err != nil {
 			serverDrop++
+			println("server drop packet ", serverDrop)
+
 			if serverDrop > 1000000 {
 				serverDrop = 0
 			}
