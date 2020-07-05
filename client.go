@@ -78,6 +78,7 @@ func clientTunToSocket(tun *water.Interface) {
 
 		cLastRecPacketLock.Lock()
 		unpacket(data, &cLastRecPacket)
+		mSb.WriteString(fmt.Sprintf("%d\n", int(cLastRecPacket.ipID)))
 		cLastRecPacketLock.Unlock()
 		_, err = clientConn.WriteToUDP(cLastRecPacket.payload, clientUDPAddr)
 		clientReceiveCount++

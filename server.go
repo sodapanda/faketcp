@@ -129,7 +129,7 @@ func serverSocketToQueue(serverSendto string, srcPort int) {
 		lastRecPacketLock.Unlock()
 		craftPacket(fBuf.data[:fBuf.len], &fPacket)
 
-		_, err := mServerQueue.Push(fBuf)
+		_, err := mServerQueue.Put(fBuf)
 		if err != nil {
 			serverDrop++
 			println("server drop packet ", serverDrop)
@@ -145,10 +145,16 @@ func serverSocketToQueue(serverSendto string, srcPort int) {
 }
 
 func serverQueueToTun(tun *water.Interface) {
+	logPacket := FPacket{}
+	logPacket.srcIP = make([]byte, 4)
+	logPacket.dstIP = make([]byte, 4)
 	for {
 		item, _ := mServerQueue.Get()
 		fBuf := item.(*FBuffer)
 		data := fBuf.data[:fBuf.len]
+
+		unpacket(data, &logPacket)
+		mSb.WriteString(fmt.Sprintf("%d\n", int(logPacket.ipID)))
 
 		_, err := tun.Write(data)
 		serverSendCount++

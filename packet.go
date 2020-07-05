@@ -10,6 +10,7 @@ var ipID uint16
 
 //FPacket IP and TCP header info
 type FPacket struct {
+	ipID    uint16
 	srcIP   []byte
 	dstIP   []byte
 	srcPort uint16
@@ -80,6 +81,7 @@ func unpacket(data []byte, fPacket *FPacket) {
 	copy(fPacket.srcIP, ipHeader.SourceAddress().To4())
 	copy(fPacket.dstIP, ipHeader.DestinationAddress().To4())
 
+	fPacket.ipID = ipHeader.ID()
 	fPacket.srcPort = tcpHeader.SourcePort()
 	fPacket.dstPort = tcpHeader.DestinationPort()
 	fPacket.syn = tcpHeader.Flags()&header.TCPFlagSyn != 0

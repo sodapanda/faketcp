@@ -1,1 +1,5 @@
 *.pprof
+*.txt
+*.pcap
+wg
+wireguard-go

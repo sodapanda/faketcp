@@ -2,7 +2,11 @@ package main
 
 import (
 	"flag"
+	"io"
+	"io/ioutil"
 	"log"
+	"net/http"
+	"strings"
 
 	"bufio"
 	"fmt"
@@ -23,6 +27,7 @@ var queueLen = 600
 var serverTunSrcPort = clientTunDstPort
 var serverTunSrcIP = "10.1.1.2"
 var serverSocketTo = "127.0.0.1:21007"
+var mSb strings.Builder
 
 func main() {
 	isServer := flag.Bool("s", false, "is server")
@@ -65,10 +70,19 @@ func main() {
 		fmt.Println("server recieve count ", serverReceiveCount)
 		fmt.Println("serverTunToSocketReadMaxLen ", serverTunToSocketReadMaxLen)
 		fmt.Println("serverSocketReadMaxLen", serverSocketReadMaxLen)
+		ioutil.WriteFile("serversend.txt", []byte(mSb.String()), 0644)
 	} else {
 		fmt.Println("client drop ", clientDrop)
 		fmt.Println("client send count ", clientSendCount)
 		fmt.Println("client receive count ", clientReceiveCount)
+		ioutil.WriteFile("clientread.txt", []byte(mSb.String()), 0644)
+
+		serverLog, _ := os.Create("serversend.txt")
+		resp, _ := http.Get("http://192.168.2.235/serversend.txt")
+		io.Copy(serverLog, resp.Body)
+
+		outPut, _ := exec.Command("python3", "compare.py").Output()
+		fmt.Printf("out put %s\n", outPut)
 	}
 }
 
