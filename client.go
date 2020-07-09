@@ -70,6 +70,7 @@ func handShake(tun *water.Interface) {
 func clientTunToSocket(tun *water.Interface) {
 	fmt.Println("client tun")
 	buffer := make([]byte, 2000)
+	// var lastID uint16
 
 	for {
 		n, err := tun.Read(buffer)
@@ -78,9 +79,16 @@ func clientTunToSocket(tun *water.Interface) {
 
 		cLastRecPacketLock.Lock()
 		unpacket(data, &cLastRecPacket)
-		mSb.WriteString(fmt.Sprintf("%d\n", int(cLastRecPacket.ipID)))
+		if enableLog {
+			mSb.WriteString(fmt.Sprintf("%d\n", int(cLastRecPacket.ipID)))
+		}
 		cLastRecPacketLock.Unlock()
+		// if lastID != cLastRecPacket.ipID {
 		_, err = clientConn.WriteToUDP(cLastRecPacket.payload, clientUDPAddr)
+		// } else {
+		// fmt.Println("remove redunt")
+		// }
+		// lastID = cLastRecPacket.ipID
 		clientReceiveCount++
 		checkError(err)
 	}

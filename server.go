@@ -21,6 +21,8 @@ var serverSendCount int
 var serverReceiveCount int
 var lastRecPacket FPacket
 var lastRecPacketLock sync.Mutex
+var mSerSeq uint32
+var reduntCounter int
 
 func serverHandShake(tun *water.Interface) {
 	mServerQueue, _ = blockingQueues.NewArrayBlockingQueue(uint64(queueLen))
@@ -59,6 +61,7 @@ func serverHandShake(tun *water.Interface) {
 	craftPacket(packet, &fPacket)
 	_, err = tun.Write(packet)
 	checkError(err)
+	mSerSeq = 1000
 
 	//等待ack
 	_, err = tun.Read(packet)
@@ -123,13 +126,25 @@ func serverSocketToQueue(serverSendto string, srcPort int) {
 			dstPort: uint16(peerPort),
 			syn:     false,
 			ack:     true,
-			seqNum:  lastRecPacket.ackNum,
+			seqNum:  mSerSeq + uint32(length),
 			ackNum:  lastRecPacket.seqNum + uint32(len(lastRecPacket.payload)),
 		}
 		lastRecPacketLock.Unlock()
 		craftPacket(fBuf.data[:fBuf.len], &fPacket)
 
+		// reduntCounter = reduntCounter + 1
+		// if reduntCounter == 5 {
+		// 	reduntCounter = 0
+
+		// 	reFBuf := poolGet()
+		// 	reFBuf.len = fBuf.len
+		// 	copy(reFBuf.data, fBuf.data)
+		// 	mServerQueue.Put(reFBuf)
+		// 	// fmt.Println("send rendunt data")
+		// }
+
 		_, err := mServerQueue.Put(fBuf)
+
 		if err != nil {
 			serverDrop++
 			println("server drop packet ", serverDrop)
@@ -154,7 +169,9 @@ func serverQueueToTun(tun *water.Interface) {
 		data := fBuf.data[:fBuf.len]
 
 		unpacket(data, &logPacket)
-		mSb.WriteString(fmt.Sprintf("%d\n", int(logPacket.ipID)))
+		if enableLog {
+			mSb.WriteString(fmt.Sprintf("%d\n", int(logPacket.ipID)))
+		}
 
 		_, err := tun.Write(data)
 		serverSendCount++
