@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/google/netstack/tcpip/header"
@@ -20,7 +19,6 @@ var serverDrop int
 var serverSendCount int
 var serverReceiveCount int
 var lastRecPacket FPacket
-var lastRecPacketLock sync.Mutex
 var mSerSeq uint32
 var reduntCounter int
 
@@ -89,9 +87,7 @@ func serverTunToSocket(tun *water.Interface) {
 		}
 		checkError(err)
 		data := buffer[:len]
-		lastRecPacketLock.Lock()
 		unpacket(data, &lastRecPacket)
-		lastRecPacketLock.Unlock()
 		_, err = serverConn.Write(lastRecPacket.payload)
 		serverReceiveCount++
 		checkError(err)
@@ -118,7 +114,6 @@ func serverSocketToQueue(serverSendto string, srcPort int) {
 		//这里不能改变pool里每个对象的slice大小，因为改小了的话，下一个包可能不够用
 		fBuf.len = length + header.IPv4MinimumSize + header.TCPMinimumSize
 		//在这里包装成IP包 入队列直接是IP包
-		lastRecPacketLock.Lock()
 		fPacket := FPacket{
 			srcIP:   net.IP{10, 1, 1, 2}.To4(),
 			dstIP:   peerIP.To4(),
@@ -129,19 +124,16 @@ func serverSocketToQueue(serverSendto string, srcPort int) {
 			seqNum:  mSerSeq + uint32(length),
 			ackNum:  lastRecPacket.seqNum + uint32(len(lastRecPacket.payload)),
 		}
-		lastRecPacketLock.Unlock()
 		craftPacket(fBuf.data[:fBuf.len], &fPacket)
 
-		// reduntCounter = reduntCounter + 1
-		// if reduntCounter == 5 {
-		// 	reduntCounter = 0
-
-		// 	reFBuf := poolGet()
-		// 	reFBuf.len = fBuf.len
-		// 	copy(reFBuf.data, fBuf.data)
-		// 	mServerQueue.Put(reFBuf)
-		// 	// fmt.Println("send rendunt data")
-		// }
+		if enableRedunt > 0 {
+			reFBuf := poolGet()
+			reFBuf.len = fBuf.len
+			copy(reFBuf.data, fBuf.data)
+			reFBuf.enQueueTS = time.Now().UnixNano()
+			reFBuf.waitTime = int64(enableRedunt) * int64(time.Millisecond)
+			reduntAdd(reFBuf)
+		}
 
 		_, err := mServerQueue.Put(fBuf)
 
@@ -159,6 +151,23 @@ func serverSocketToQueue(serverSendto string, srcPort int) {
 	}
 }
 
+func reduntWorker(tun *water.Interface) {
+	reduntInit()
+	for {
+		fBuf := reduntGet()
+		data := fBuf.data[:fBuf.len]
+
+		writeLen, err := tun.Write(data)
+		fmt.Println("server send redunt")
+		serverSendCount++
+		poolPut(fBuf)
+		checkError(err)
+		if writeLen != len(data) {
+			fmt.Println("server tun write not full")
+		}
+	}
+}
+
 func serverQueueToTun(tun *water.Interface) {
 	logPacket := FPacket{}
 	logPacket.srcIP = make([]byte, 4)
@@ -168,14 +177,17 @@ func serverQueueToTun(tun *water.Interface) {
 		fBuf := item.(*FBuffer)
 		data := fBuf.data[:fBuf.len]
 
-		unpacket(data, &logPacket)
 		if enableLog {
+			unpacket(data, &logPacket)
 			mSb.WriteString(fmt.Sprintf("%d\n", int(logPacket.ipID)))
 		}
 
-		_, err := tun.Write(data)
+		writeLen, err := tun.Write(data)
 		serverSendCount++
 		poolPut(fBuf)
 		checkError(err)
+		if writeLen != len(data) {
+			fmt.Println("server tun write not full")
+		}
 	}
 }

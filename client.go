@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"net"
-	"sync"
 
 	"github.com/google/netstack/tcpip/header"
 	"github.com/songgao/water"
@@ -17,7 +16,6 @@ var clientDrop int
 var clientSendCount int
 var clientReceiveCount int
 var cLastRecPacket FPacket
-var cLastRecPacketLock sync.Mutex
 
 func handShake(tun *water.Interface) {
 	//发送Syn
@@ -70,25 +68,17 @@ func handShake(tun *water.Interface) {
 func clientTunToSocket(tun *water.Interface) {
 	fmt.Println("client tun")
 	buffer := make([]byte, 2000)
-	// var lastID uint16
 
 	for {
 		n, err := tun.Read(buffer)
 		checkError(err)
 		data := buffer[:n]
 
-		cLastRecPacketLock.Lock()
 		unpacket(data, &cLastRecPacket)
 		if enableLog {
 			mSb.WriteString(fmt.Sprintf("%d\n", int(cLastRecPacket.ipID)))
 		}
-		cLastRecPacketLock.Unlock()
-		// if lastID != cLastRecPacket.ipID {
 		_, err = clientConn.WriteToUDP(cLastRecPacket.payload, clientUDPAddr)
-		// } else {
-		// fmt.Println("remove redunt")
-		// }
-		// lastID = cLastRecPacket.ipID
 		clientReceiveCount++
 		checkError(err)
 	}
@@ -110,7 +100,7 @@ func clientSocketToQueue(socketListenPort string) {
 		clientUDPAddr = addr
 
 		fBuf.len = len + header.IPv4MinimumSize + header.TCPMinimumSize
-		_, err := mClientQueue.Push(fBuf)
+		_, err := mClientQueue.Put(fBuf)
 		if err != nil {
 			clientDrop++
 			if clientDrop > 1000000 {
@@ -127,7 +117,6 @@ func clientQueueToTun(tun *water.Interface, serverIP string, serverPort int) {
 		fBuf := item.(*FBuffer)
 		packet := fBuf.data[:fBuf.len]
 
-		cLastRecPacketLock.Lock()
 		fPacket := FPacket{}
 		fPacket.srcIP = net.IP{10, 1, 1, 2}.To4()
 		fPacket.dstIP = net.ParseIP(serverIP).To4()
@@ -145,11 +134,13 @@ func clientQueueToTun(tun *water.Interface, serverIP string, serverPort int) {
 		fPacket.ack = true
 
 		craftPacket(packet, &fPacket)
-		cLastRecPacketLock.Unlock()
 
-		_, err := tun.Write(packet)
+		writeLen, err := tun.Write(packet)
 		clientSendCount++
 		poolPut(fBuf)
 		checkError(err)
+		if writeLen != len(packet) {
+			fmt.Println("client tun write not full")
+		}
 	}
 }

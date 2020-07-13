@@ -29,17 +29,20 @@ var serverTunSrcIP = "10.1.1.2"
 var serverSocketTo = "127.0.0.1:21007"
 var mSb strings.Builder
 var enableLog = false
+var enableRedunt int
 
 func main() {
 	isServer := flag.Bool("s", false, "is server")
 	fClientTunDstIP := flag.String("clientTunDstIP", "", "dst ip")
 	fClientTunDstPort := flag.Int("clientTunDstPort", 0, "dst port")
 	fQueueLen := flag.Int("queueLen", 0, "queue len")
+	fRedunt := flag.Int("re", 0, "redunt milli")
 	flag.Parse()
 
 	clientTunDstIP = *fClientTunDstIP
 	clientTunDstPort = *fClientTunDstPort
 	serverTunSrcPort = clientTunDstPort
+	enableRedunt = *fRedunt
 	queueLen = *fQueueLen
 
 	tun := createTUN("faketcp")
@@ -54,6 +57,9 @@ func main() {
 		go serverTunToSocket(tun)
 		go serverSocketToQueue(serverSocketTo, serverTunSrcPort)
 		go serverQueueToTun(tun)
+		if enableRedunt > 0 {
+			go reduntWorker(tun)
+		}
 	} else {
 		fmt.Println("server reader?")
 		bufio.NewReader(os.Stdin).ReadString('\n')
@@ -82,7 +88,7 @@ func main() {
 			ioutil.WriteFile("clientread.txt", []byte(mSb.String()), 0644)
 
 			serverLog, _ := os.Create("serversend.txt")
-			resp, _ := http.Get("http://192.168.2.235/serversend.txt")
+			resp, _ := http.Get("http://103.73.255.122/serversend.txt")
 			io.Copy(serverLog, resp.Body)
 
 			outPut, _ := exec.Command("python3", "compare.py").Output()
