@@ -8,8 +8,13 @@ import (
 type FBuffer struct {
 	data      []byte
 	len       int
+	id        int
 	enQueueTS int64
 	waitTime  int64
+}
+
+func (f *FBuffer) index() int {
+	return f.id
 }
 
 var bufPool = sync.Pool{

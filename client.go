@@ -16,10 +16,12 @@ var clientDrop int
 var clientSendCount int
 var clientReceiveCount int
 var cLastRecPacket FPacket
+var clientTunToSocketQueue *OrderQueue
 
 func handShake(tun *water.Interface) {
 	//发送Syn
 	mClientQueue, _ = blockingQueues.NewArrayBlockingQueue(uint64(queueLen))
+	clientTunToSocketQueue = NewOrderQueue(50)
 
 	srcIP := net.ParseIP(clientTunSrcIP)
 	dstIP := net.ParseIP(clientTunDstIP)
@@ -65,22 +67,31 @@ func handShake(tun *water.Interface) {
 	fmt.Println("client send ack")
 }
 
-func clientTunToSocket(tun *water.Interface) {
+func clientTunToQueue(tun *water.Interface) {
 	fmt.Println("client tun")
-	buffer := make([]byte, 2000)
 
 	for {
-		n, err := tun.Read(buffer)
+		fBuf := poolGet()
+		readLen, err := tun.Read(fBuf.data)
+		fBuf.len = readLen
+		fBuf.id = int(header.IPv4(fBuf.data).ID())
 		checkError(err)
-		data := buffer[:n]
+		clientTunToSocketQueue.Put(fBuf)
+	}
+}
 
+func clientQueueToSocket() {
+	for {
+		fBuf := (clientTunToSocketQueue.Get()).(*FBuffer)
+		data := fBuf.data[:fBuf.len]
 		unpacket(data, &cLastRecPacket)
 		if enableLog {
 			mSb.WriteString(fmt.Sprintf("%d\n", int(cLastRecPacket.ipID)))
 		}
-		_, err = clientConn.WriteToUDP(cLastRecPacket.payload, clientUDPAddr)
+		_, err := clientConn.WriteToUDP(cLastRecPacket.payload, clientUDPAddr)
 		clientReceiveCount++
 		checkError(err)
+		poolPut(fBuf)
 	}
 }
 

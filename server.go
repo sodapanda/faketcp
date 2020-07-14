@@ -158,7 +158,6 @@ func reduntWorker(tun *water.Interface) {
 		data := fBuf.data[:fBuf.len]
 
 		writeLen, err := tun.Write(data)
-		fmt.Println("server send redunt")
 		serverSendCount++
 		poolPut(fBuf)
 		checkError(err)

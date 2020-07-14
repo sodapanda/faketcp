@@ -64,9 +64,10 @@ func main() {
 		fmt.Println("server reader?")
 		bufio.NewReader(os.Stdin).ReadString('\n')
 		handShake(tun)
-		go clientTunToSocket(tun)
+		go clientTunToQueue(tun)
 		go clientSocketToQueue(clientSocketListenPort)
 		go clientQueueToTun(tun, clientTunDstIP, clientTunDstPort)
+		go clientQueueToSocket()
 	}
 	reader := bufio.NewReader(os.Stdin)
 	reader.ReadString('\n')
