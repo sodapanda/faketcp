@@ -13,10 +13,6 @@ type FBuffer struct {
 	waitTime  int64
 }
 
-func (f *FBuffer) index() int {
-	return f.id
-}
-
 var bufPool = sync.Pool{
 	New: func() interface{} {
 		buffer := FBuffer{}

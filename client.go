@@ -21,7 +21,7 @@ var clientTunToSocketQueue *OrderQueue
 func handShake(tun *water.Interface) {
 	//发送Syn
 	mClientQueue, _ = blockingQueues.NewArrayBlockingQueue(uint64(queueLen))
-	clientTunToSocketQueue = NewOrderQueue(50)
+	clientTunToSocketQueue = NewOrderQueue(200)
 
 	srcIP := net.ParseIP(clientTunSrcIP)
 	dstIP := net.ParseIP(clientTunDstIP)
@@ -82,7 +82,7 @@ func clientTunToQueue(tun *water.Interface) {
 
 func clientQueueToSocket() {
 	for {
-		fBuf := (clientTunToSocketQueue.Get()).(*FBuffer)
+		fBuf := clientTunToSocketQueue.Get()
 		data := fBuf.data[:fBuf.len]
 		unpacket(data, &cLastRecPacket)
 		if enableLog {

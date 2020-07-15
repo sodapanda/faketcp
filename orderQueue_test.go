@@ -24,9 +24,8 @@ func TestQueue(t *testing.T) {
 		time.Sleep(10 * time.Second)
 		for i := 0; i < 20; i++ {
 			item := q.Get()
-			fp := item.(*FBuffer)
 
-			fmt.Println("get item ", fp.id, " len ", q.Len())
+			fmt.Println("get item ", item.id, " len ", q.Len())
 			time.Sleep(1 * time.Second)
 		}
 	}()
