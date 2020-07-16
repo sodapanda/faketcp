@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"bufio"
 	"fmt"
@@ -68,6 +69,7 @@ func main() {
 		go clientSocketToQueue(clientSocketListenPort)
 		go clientQueueToTun(tun, clientTunDstIP, clientTunDstPort)
 		go clientQueueToSocket()
+		go iLog()
 	}
 	reader := bufio.NewReader(os.Stdin)
 	reader.ReadString('\n')
@@ -116,5 +118,26 @@ func checkError(err error) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Fatal error: %s\n", err.Error())
 		os.Exit(1)
+	}
+}
+
+func iLog() {
+	for {
+		lep := emptyPutCount
+		lrc := reduntCount
+		lreorderCount := reorderCount
+		lpushbackCount := pushbackCount
+		ltimeoutCount := timeoutCount
+		lclientReceiveCount := clientReceiveCount
+
+		time.Sleep(1 * time.Second)
+		fmt.Println("空队放 ", emptyPutCount-lep,
+			" 冗余包 ", reduntCount-lrc,
+			" 队长 ", clientTunToSocketQueue.dataList.Len(),
+			" 重排 ", reorderCount-lreorderCount,
+			" 放队尾 ", pushbackCount-lpushbackCount,
+			" 超时包 ", timeoutCount-ltimeoutCount,
+			" 发上层 ", clientReceiveCount-lclientReceiveCount,
+			" poolE ", poolWrongFlag)
 	}
 }

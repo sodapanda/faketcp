@@ -18,10 +18,17 @@ var clientReceiveCount int
 var cLastRecPacket FPacket
 var clientTunToSocketQueue *OrderQueue
 
+var reduntCount int
+var reorderCount int
+var pushbackCount int
+var timeoutCount int
+var emptyPutCount int
+var poolWrongFlag bool
+
 func handShake(tun *water.Interface) {
 	//发送Syn
 	mClientQueue, _ = blockingQueues.NewArrayBlockingQueue(uint64(queueLen))
-	clientTunToSocketQueue = NewOrderQueue(200)
+	clientTunToSocketQueue = NewOrderQueue(2000)
 
 	srcIP := net.ParseIP(clientTunSrcIP)
 	dstIP := net.ParseIP(clientTunDstIP)
@@ -72,9 +79,9 @@ func clientTunToQueue(tun *water.Interface) {
 
 	for {
 		fBuf := poolGet()
-		readLen, err := tun.Read(fBuf.data)
+		readLen, err := tun.Read(fBuf.data[0:])
 		fBuf.len = readLen
-		fBuf.id = int(header.IPv4(fBuf.data).ID())
+		fBuf.id = int(header.IPv4(fBuf.data[:header.IPv4MinimumSize]).ID())
 		checkError(err)
 		clientTunToSocketQueue.Put(fBuf)
 	}
