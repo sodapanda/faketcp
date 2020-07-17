@@ -31,6 +31,7 @@ var serverSocketTo = "127.0.0.1:21007"
 var mSb strings.Builder
 var enableLog = false
 var enableRedunt int
+var enableVerbose bool
 
 func main() {
 	isServer := flag.Bool("s", false, "is server")
@@ -38,6 +39,7 @@ func main() {
 	fClientTunDstPort := flag.Int("clientTunDstPort", 0, "dst port")
 	fQueueLen := flag.Int("queueLen", 0, "queue len")
 	fRedunt := flag.Int("re", 0, "redunt milli")
+	fVerbos := flag.Bool("verb", false, "verbose")
 	flag.Parse()
 
 	clientTunDstIP = *fClientTunDstIP
@@ -45,6 +47,7 @@ func main() {
 	serverTunSrcPort = clientTunDstPort
 	enableRedunt = *fRedunt
 	queueLen = *fQueueLen
+	enableVerbose = *fVerbos
 
 	tun := createTUN("faketcp")
 
@@ -68,8 +71,12 @@ func main() {
 		go clientTunToQueue(tun)
 		go clientSocketToQueue(clientSocketListenPort)
 		go clientQueueToTun(tun, clientTunDstIP, clientTunDstPort)
-		go clientQueueToSocket()
-		go iLog()
+		if enableRedunt > 0 {
+			go clientQueueToSocket()
+		}
+		if enableVerbose {
+			go iLog()
+		}
 	}
 	reader := bufio.NewReader(os.Stdin)
 	reader.ReadString('\n')

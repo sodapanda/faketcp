@@ -76,14 +76,26 @@ func handShake(tun *water.Interface) {
 
 func clientTunToQueue(tun *water.Interface) {
 	fmt.Println("client tun")
+	sBuf := make([]byte, 2000)
 
 	for {
-		fBuf := poolGet()
-		readLen, err := tun.Read(fBuf.data[0:])
-		fBuf.len = readLen
-		fBuf.id = int(header.IPv4(fBuf.data[:header.IPv4MinimumSize]).ID())
-		checkError(err)
-		clientTunToSocketQueue.Put(fBuf)
+		if enableRedunt > 0 {
+			fBuf := poolGet()
+			readLen, err := tun.Read(fBuf.data[0:])
+			fBuf.len = readLen
+			fBuf.id = int(header.IPv4(fBuf.data[:header.IPv4MinimumSize]).ID())
+			checkError(err)
+			clientTunToSocketQueue.Put(fBuf)
+		} else {
+			readLen, err := tun.Read(sBuf)
+			checkError(err)
+			data := sBuf[:readLen]
+			unpacket(data, &cLastRecPacket)
+
+			_, err = clientConn.WriteToUDP(cLastRecPacket.payload, clientUDPAddr)
+			clientReceiveCount++
+			checkError(err)
+		}
 	}
 }
 
