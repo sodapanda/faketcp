@@ -33,7 +33,7 @@ func NewOrderQueue(size int) *OrderQueue {
 //Put add item with block
 func (q *OrderQueue) Put(item *FBuffer) {
 	item.enQueueTS = time.Now().UnixNano()
-	item.waitTime = int64(enableRedunt) * int64(time.Millisecond)
+	item.waitTime = int64(recDelay) * int64(time.Millisecond)
 	q.lock.Lock()
 	for q.dataList.Len() == q.size {
 		q.notFull.Wait()

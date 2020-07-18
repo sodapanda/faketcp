@@ -9,7 +9,7 @@ import (
 var reduntQueue *blockingQueues.BlockingQueue
 
 func reduntInit() {
-	reduntQueue, _ = blockingQueues.NewArrayBlockingQueue(100)
+	reduntQueue, _ = blockingQueues.NewArrayBlockingQueue(1000)
 }
 
 func reduntAdd(item *FBuffer) {

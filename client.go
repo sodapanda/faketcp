@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/google/netstack/tcpip/header"
 	"github.com/songgao/water"
@@ -74,28 +75,35 @@ func handShake(tun *water.Interface) {
 	fmt.Println("client send ack")
 }
 
-func clientTunToQueue(tun *water.Interface) {
+func clientTunToSocket(tun *water.Interface) {
 	fmt.Println("client tun")
-	sBuf := make([]byte, 2000)
+	buffer := make([]byte, 2000)
 
 	for {
-		if enableRedunt > 0 {
-			fBuf := poolGet()
-			readLen, err := tun.Read(fBuf.data[0:])
-			fBuf.len = readLen
-			fBuf.id = int(header.IPv4(fBuf.data[:header.IPv4MinimumSize]).ID())
-			checkError(err)
-			clientTunToSocketQueue.Put(fBuf)
-		} else {
-			readLen, err := tun.Read(sBuf)
-			checkError(err)
-			data := sBuf[:readLen]
-			unpacket(data, &cLastRecPacket)
+		n, err := tun.Read(buffer)
+		checkError(err)
+		data := buffer[:n]
 
-			_, err = clientConn.WriteToUDP(cLastRecPacket.payload, clientUDPAddr)
-			clientReceiveCount++
-			checkError(err)
+		unpacket(data, &cLastRecPacket)
+		if enableLog {
+			mSb.WriteString(fmt.Sprintf("%d\n", int(cLastRecPacket.ipID)))
 		}
+		_, err = clientConn.WriteToUDP(cLastRecPacket.payload, clientUDPAddr)
+		clientReceiveCount++
+		checkError(err)
+	}
+}
+
+func clientTunToQueue(tun *water.Interface) {
+	fmt.Println("client tun to queue")
+
+	for {
+		fBuf := poolGet()
+		readLen, err := tun.Read(fBuf.data[0:])
+		fBuf.len = readLen
+		fBuf.id = int(header.IPv4(fBuf.data[:header.IPv4MinimumSize]).ID())
+		checkError(err)
+		clientTunToSocketQueue.Put(fBuf)
 	}
 }
 
@@ -114,7 +122,7 @@ func clientQueueToSocket() {
 	}
 }
 
-func clientSocketToQueue(socketListenPort string) {
+func clientSocketToQueue(socketListenPort string, serverIP string, serverPort int) {
 	fmt.Println("client socket to queue")
 
 	udpAddr, err := net.ResolveUDPAddr("udp4", ":"+socketListenPort)
@@ -126,27 +134,12 @@ func clientSocketToQueue(socketListenPort string) {
 
 	for {
 		fBuf := poolGet()
-		len, addr, _ := conn.ReadFromUDP(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
+		lenU, addr, _ := conn.ReadFromUDP(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
 		clientUDPAddr = addr
 
-		fBuf.len = len + header.IPv4MinimumSize + header.TCPMinimumSize
-		_, err := mClientQueue.Put(fBuf)
-		if err != nil {
-			clientDrop++
-			if clientDrop > 1000000 {
-				clientDrop = 0
-			}
-			poolPut(fBuf)
-		}
-	}
-}
+		fBuf.len = lenU + header.IPv4MinimumSize + header.TCPMinimumSize
 
-func clientQueueToTun(tun *water.Interface, serverIP string, serverPort int) {
-	for {
-		item, _ := mClientQueue.Get()
-		fBuf := item.(*FBuffer)
 		packet := fBuf.data[:fBuf.len]
-
 		fPacket := FPacket{}
 		fPacket.srcIP = net.IP{10, 1, 1, 2}.To4()
 		fPacket.dstIP = net.ParseIP(serverIP).To4()
@@ -165,11 +158,55 @@ func clientQueueToTun(tun *water.Interface, serverIP string, serverPort int) {
 
 		craftPacket(packet, &fPacket)
 
-		writeLen, err := tun.Write(packet)
+		if sendDelay > 0 {
+			reFBuf := poolGet()
+			reFBuf.len = fBuf.len
+			copy(reFBuf.data, fBuf.data)
+			reFBuf.enQueueTS = time.Now().UnixNano()
+			reFBuf.waitTime = int64(sendDelay) * int64(time.Millisecond)
+			reduntAdd(reFBuf)
+		}
+
+		_, err := mClientQueue.Put(fBuf)
+
+		if err != nil {
+			clientDrop++
+			if clientDrop > 1000000 {
+				clientDrop = 0
+			}
+			poolPut(fBuf)
+		}
+	}
+}
+
+func clientReduntWork(tun *water.Interface) {
+	reduntInit()
+
+	for {
+		fBuf := reduntGet()
+		data := fBuf.data[:fBuf.len]
+
+		writeLen, err := tun.Write(data)
+		serverSendCount++
+		poolPut(fBuf)
+		checkError(err)
+		if writeLen != len(data) {
+			fmt.Println("client tun write not full")
+		}
+	}
+}
+
+func clientQueueToTun(tun *water.Interface) {
+	for {
+		item, _ := mClientQueue.Get()
+		fBuf := item.(*FBuffer)
+		data := fBuf.data[:fBuf.len]
+
+		writeLen, err := tun.Write(data)
 		clientSendCount++
 		poolPut(fBuf)
 		checkError(err)
-		if writeLen != len(packet) {
+		if writeLen != len(data) {
 			fmt.Println("client tun write not full")
 		}
 	}

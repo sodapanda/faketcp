@@ -30,24 +30,29 @@ var serverTunSrcIP = "10.1.1.2"
 var serverSocketTo = "127.0.0.1:21007"
 var mSb strings.Builder
 var enableLog = false
-var enableRedunt int
 var enableVerbose bool
+var sendDelay int
+var recDelay int
+
+//todo 发送延迟和接收延迟分别定义
 
 func main() {
 	isServer := flag.Bool("s", false, "is server")
 	fClientTunDstIP := flag.String("clientTunDstIP", "", "dst ip")
 	fClientTunDstPort := flag.Int("clientTunDstPort", 0, "dst port")
 	fQueueLen := flag.Int("queueLen", 0, "queue len")
-	fRedunt := flag.Int("re", 0, "redunt milli")
+	fRecDelay := flag.Int("recDelay", 0, "rec delay")
 	fVerbos := flag.Bool("verb", false, "verbose")
+	fSendDelay := flag.Int("sendDelay", 0, "redunt send delay")
 	flag.Parse()
 
 	clientTunDstIP = *fClientTunDstIP
 	clientTunDstPort = *fClientTunDstPort
 	serverTunSrcPort = clientTunDstPort
-	enableRedunt = *fRedunt
+	recDelay = *fRecDelay
 	queueLen = *fQueueLen
 	enableVerbose = *fVerbos
+	sendDelay = *fSendDelay
 
 	tun := createTUN("faketcp")
 
@@ -58,25 +63,40 @@ func main() {
 
 	if *isServer {
 		serverHandShake(tun)
-		go serverTunToSocket(tun)
-		go serverSocketToQueue(serverSocketTo, serverTunSrcPort)
-		go serverQueueToTun(tun)
-		if enableRedunt > 0 {
+		//接收
+		if recDelay > 0 {
+			go serverTunToQueue(tun)
+			go serverQueueToSocket()
+		} else {
+			go serverTunToSocket(tun)
+		}
+
+		//发送
+		if recDelay > 0 {
 			go reduntWorker(tun)
 		}
+		go serverSocketToQueue(serverSocketTo, serverTunSrcPort)
+		go serverQueueToTun(tun)
 	} else {
 		fmt.Println("server reader?")
 		bufio.NewReader(os.Stdin).ReadString('\n')
 		handShake(tun)
-		go clientTunToQueue(tun)
-		go clientSocketToQueue(clientSocketListenPort)
-		go clientQueueToTun(tun, clientTunDstIP, clientTunDstPort)
-		if enableRedunt > 0 {
+		//接收
+		if recDelay > 0 {
+			go clientTunToQueue(tun)
 			go clientQueueToSocket()
+		} else {
+			go clientTunToSocket(tun)
+		}
+		//发送
+		if recDelay > 0 {
+			go clientReduntWork(tun)
 		}
 		if enableVerbose {
 			go iLog()
 		}
+		go clientSocketToQueue(clientSocketListenPort, clientTunDstIP, clientTunDstPort)
+		go clientQueueToTun(tun)
 	}
 	reader := bufio.NewReader(os.Stdin)
 	reader.ReadString('\n')

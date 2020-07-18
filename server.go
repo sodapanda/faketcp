@@ -21,9 +21,11 @@ var serverReceiveCount int
 var lastRecPacket FPacket
 var mSerSeq uint32
 var reduntCounter int
+var serverTunToSocketQueue *OrderQueue
 
 func serverHandShake(tun *water.Interface) {
 	mServerQueue, _ = blockingQueues.NewArrayBlockingQueue(uint64(queueLen))
+	serverTunToSocketQueue = NewOrderQueue(2000)
 	//等待syn
 	fmt.Println("server waiting for SYN")
 	packet := make([]byte, 40)
@@ -94,6 +96,26 @@ func serverTunToSocket(tun *water.Interface) {
 	}
 }
 
+func serverTunToQueue(tun *water.Interface) {
+	for {
+		fBuf := poolGet()
+		readLen, err := tun.Read(fBuf.data)
+		checkError(err)
+		fBuf.len = readLen
+		fBuf.id = int(header.IPv4(fBuf.data[:header.IPv4MinimumSize]).ID())
+		serverTunToSocketQueue.Put(fBuf)
+	}
+}
+
+func serverQueueToSocket() {
+	for {
+		fBuf := serverTunToSocketQueue.Get()
+		data := fBuf.data[:fBuf.len]
+		_, err := serverConn.Write(data[header.IPv4MinimumSize+header.TCPMinimumSize:])
+		checkError(err)
+	}
+}
+
 var serverSocketReadMaxLen int
 
 func serverSocketToQueue(serverSendto string, srcPort int) {
@@ -126,12 +148,12 @@ func serverSocketToQueue(serverSendto string, srcPort int) {
 		}
 		craftPacket(fBuf.data[:fBuf.len], &fPacket)
 
-		if enableRedunt > 0 {
+		if sendDelay > 0 {
 			reFBuf := poolGet()
 			reFBuf.len = fBuf.len
 			copy(reFBuf.data, fBuf.data)
 			reFBuf.enQueueTS = time.Now().UnixNano()
-			reFBuf.waitTime = int64(enableRedunt) * int64(time.Millisecond)
+			reFBuf.waitTime = int64(sendDelay) * int64(time.Millisecond)
 			reduntAdd(reFBuf)
 		}
 
