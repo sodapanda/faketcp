@@ -85,10 +85,15 @@ func clientTunToSocket(tun *water.Interface) {
 		data := buffer[:n]
 
 		unpacket(data, &cLastRecPacket)
+		startTs := time.Now().UnixNano()
 		if enableLog {
 			mSb.WriteString(fmt.Sprintf("%d\n", int(cLastRecPacket.ipID)))
 		}
 		_, err = clientConn.WriteToUDP(cLastRecPacket.payload, clientUDPAddr)
+		endTs := time.Now().UnixNano()
+		if enableDebugLog {
+			debugRecSb.WriteString(fmt.Sprintf("%d,%d,%d\n", startTs, endTs, endTs-startTs))
+		}
 		clientReceiveCount++
 		checkError(err)
 	}
@@ -103,6 +108,7 @@ func clientTunToQueue(tun *water.Interface) {
 		fBuf.len = readLen
 		fBuf.id = int(header.IPv4(fBuf.data[:header.IPv4MinimumSize]).ID())
 		checkError(err)
+		clientReceiveCount = clientReceiveCount + 1
 		clientTunToSocketQueue.Put(fBuf)
 	}
 }
@@ -138,6 +144,7 @@ func clientSocketToQueue(socketListenPort string, serverIP string, serverPort in
 		clientUDPAddr = addr
 
 		fBuf.len = lenU + header.IPv4MinimumSize + header.TCPMinimumSize
+		fBuf.debugTs = time.Now().UnixNano()
 
 		packet := fBuf.data[:fBuf.len]
 		fPacket := FPacket{}
@@ -203,6 +210,10 @@ func clientQueueToTun(tun *water.Interface) {
 		data := fBuf.data[:fBuf.len]
 
 		writeLen, err := tun.Write(data)
+		endTs := time.Now().UnixNano()
+		if enableDebugLog {
+			debugSendSb.WriteString(fmt.Sprintf("%d,%d,%d\n", fBuf.debugTs, endTs, endTs-fBuf.debugTs))
+		}
 		clientSendCount++
 		poolPut(fBuf)
 		checkError(err)

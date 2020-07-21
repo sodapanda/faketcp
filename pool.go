@@ -11,6 +11,7 @@ type FBuffer struct {
 	id        int
 	enQueueTS int64
 	waitTime  int64
+	debugTs   int64
 }
 
 var bufPool = sync.Pool{

@@ -76,21 +76,24 @@ func serverHandShake(tun *water.Interface) {
 	fmt.Println("server got ack hand shake done")
 }
 
-var serverTunToSocketReadMaxLen int
-
 func serverTunToSocket(tun *water.Interface) {
 	fmt.Println("server tun to socket")
 	buffer := make([]byte, 2000)
 
 	for {
 		len, err := tun.Read(buffer)
-		if len > serverTunToSocketReadMaxLen {
-			serverTunToSocketReadMaxLen = len
+		if len == 0 {
+			fmt.Println("server tun read len 0 ")
+			os.Exit(1)
 		}
+		startTs := time.Now().UnixNano()
 		checkError(err)
 		data := buffer[:len]
-		unpacket(data, &lastRecPacket)
-		_, err = serverConn.Write(lastRecPacket.payload)
+		_, err = serverConn.Write(data[header.IPv4MinimumSize+header.TCPMinimumSize:])
+		endTs := time.Now().UnixNano()
+		if enableDebugLog {
+			debugRecSb.WriteString(fmt.Sprintf("%d,%d,%d\n", startTs, endTs, endTs-startTs))
+		}
 		serverReceiveCount++
 		checkError(err)
 	}
@@ -116,8 +119,6 @@ func serverQueueToSocket() {
 	}
 }
 
-var serverSocketReadMaxLen int
-
 func serverSocketToQueue(serverSendto string, srcPort int) {
 	fmt.Println("server socket to queue")
 
@@ -130,11 +131,9 @@ func serverSocketToQueue(serverSendto string, srcPort int) {
 	for {
 		fBuf := poolGet()
 		length, _ := serverConn.Read(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
-		if length > serverSocketReadMaxLen {
-			serverSocketReadMaxLen = length
-		}
 		//这里不能改变pool里每个对象的slice大小，因为改小了的话，下一个包可能不够用
 		fBuf.len = length + header.IPv4MinimumSize + header.TCPMinimumSize
+		fBuf.debugTs = time.Now().UnixNano()
 		//在这里包装成IP包 入队列直接是IP包
 		fPacket := FPacket{
 			srcIP:   net.IP{10, 1, 1, 2}.To4(),
@@ -205,6 +204,12 @@ func serverQueueToTun(tun *water.Interface) {
 
 		writeLen, err := tun.Write(data)
 		serverSendCount++
+
+		if enableDebugLog {
+			nowTs := time.Now().UnixNano()
+			debugSendSb.WriteString(fmt.Sprintf("%d,%d,%d\n", fBuf.debugTs, nowTs, nowTs-fBuf.debugTs))
+		}
+
 		poolPut(fBuf)
 		checkError(err)
 		if writeLen != len(data) {

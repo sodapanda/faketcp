@@ -34,6 +34,10 @@ var enableVerbose bool
 var sendDelay int
 var recDelay int
 
+var debugSendSb strings.Builder
+var debugRecSb strings.Builder
+var enableDebugLog bool
+
 //todo 发送延迟和接收延迟分别定义
 
 func main() {
@@ -44,6 +48,7 @@ func main() {
 	fRecDelay := flag.Int("recDelay", 0, "rec delay")
 	fVerbos := flag.Bool("verb", false, "verbose")
 	fSendDelay := flag.Int("sendDelay", 0, "redunt send delay")
+	fEnableDebug := flag.Bool("debug", false, "enable debug log")
 	flag.Parse()
 
 	clientTunDstIP = *fClientTunDstIP
@@ -53,6 +58,7 @@ func main() {
 	queueLen = *fQueueLen
 	enableVerbose = *fVerbos
 	sendDelay = *fSendDelay
+	enableDebugLog = *fEnableDebug
 
 	tun := createTUN("faketcp")
 
@@ -105,10 +111,12 @@ func main() {
 		fmt.Println("server drop ", serverDrop)
 		fmt.Println("server send ", serverSendCount)
 		fmt.Println("server recieve count ", serverReceiveCount)
-		fmt.Println("serverTunToSocketReadMaxLen ", serverTunToSocketReadMaxLen)
-		fmt.Println("serverSocketReadMaxLen", serverSocketReadMaxLen)
 		if enableLog {
 			ioutil.WriteFile("serversend.txt", []byte(mSb.String()), 0644)
+		}
+		if enableDebugLog {
+			ioutil.WriteFile("serverSendTime.csv", []byte(debugSendSb.String()), 0644)
+			ioutil.WriteFile("serverRecTime.csv", []byte(debugRecSb.String()), 0644)
 		}
 	} else {
 		fmt.Println("client drop ", clientDrop)
@@ -123,6 +131,11 @@ func main() {
 
 			outPut, _ := exec.Command("python3", "compare.py").Output()
 			fmt.Printf("out put %s\n", outPut)
+		}
+
+		if enableDebugLog {
+			ioutil.WriteFile("clientSendTime.csv", []byte(debugSendSb.String()), 0644)
+			ioutil.WriteFile("clientRecTime.csv", []byte(debugRecSb.String()), 0644)
 		}
 	}
 }
