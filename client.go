@@ -10,8 +10,7 @@ import (
 	"github.com/theodesp/blockingQueues"
 )
 
-var clientConn *net.UDPConn
-var clientUDPAddr *net.UDPAddr
+var clientConnF *net.UDPConn
 var mClientQueue *blockingQueues.BlockingQueue
 var clientDrop int
 var clientSendCount int
@@ -89,7 +88,7 @@ func clientTunToSocket(tun *water.Interface) {
 		if enableLog {
 			mSb.WriteString(fmt.Sprintf("%d\n", int(cLastRecPacket.ipID)))
 		}
-		_, err = clientConn.WriteToUDP(cLastRecPacket.payload, clientUDPAddr)
+		_, err = clientConnF.Write(cLastRecPacket.payload)
 		endTs := time.Now().UnixNano()
 		if enableDebugLog {
 			debugRecSb.WriteString(fmt.Sprintf("%d,%d,%d\n", startTs, endTs, endTs-startTs))
@@ -121,7 +120,7 @@ func clientQueueToSocket() {
 		if enableLog {
 			mSb.WriteString(fmt.Sprintf("%d\n", int(cLastRecPacket.ipID)))
 		}
-		_, err := clientConn.WriteToUDP(cLastRecPacket.payload, clientUDPAddr)
+		_, err := clientConnF.Write(cLastRecPacket.payload)
 		clientReceiveCount++
 		checkError(err)
 		poolPut(fBuf)
@@ -132,16 +131,23 @@ func clientSocketToQueue(socketListenPort string, serverIP string, serverPort in
 	fmt.Println("client socket to queue")
 
 	udpAddr, err := net.ResolveUDPAddr("udp4", ":"+socketListenPort)
-	checkError(err)
 	conn, err := net.ListenUDP("udp", udpAddr)
 	checkError(err)
 	fmt.Printf("client listen socket %s\n", udpAddr)
-	clientConn = conn
-
+	dstIP := net.ParseIP(serverIP).To4()
+	clientConnF = nil
 	for {
 		fBuf := poolGet()
-		lenU, addr, _ := conn.ReadFromUDP(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
-		clientUDPAddr = addr
+		lenU := 0
+		if clientConnF == nil {
+			var addr *net.UDPAddr
+			lenU, addr, _ = conn.ReadFromUDP(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
+			conn.Close()
+			clientConnF, _ = net.DialUDP("udp4", udpAddr, addr)
+			fmt.Println("clientConnF Dial ", udpAddr, addr)
+		} else {
+			lenU, _ = clientConnF.Read(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
+		}
 
 		fBuf.len = lenU + header.IPv4MinimumSize + header.TCPMinimumSize
 		fBuf.debugTs = time.Now().UnixNano()
@@ -149,7 +155,7 @@ func clientSocketToQueue(socketListenPort string, serverIP string, serverPort in
 		packet := fBuf.data[:fBuf.len]
 		fPacket := FPacket{}
 		fPacket.srcIP = net.IP{10, 1, 1, 2}.To4()
-		fPacket.dstIP = net.ParseIP(serverIP).To4()
+		fPacket.dstIP = dstIP
 		fPacket.srcPort = 8888
 		fPacket.dstPort = uint16(serverPort)
 		fPacket.seqNum = cLastRecPacket.ackNum
@@ -174,14 +180,12 @@ func clientSocketToQueue(socketListenPort string, serverIP string, serverPort in
 			reduntAdd(reFBuf)
 		}
 
-		_, err := mClientQueue.Put(fBuf)
+		_, err := mClientQueue.Push(fBuf)
 
 		if err != nil {
 			clientDrop++
-			if clientDrop > 1000000 {
-				clientDrop = 0
-			}
 			poolPut(fBuf)
+			fmt.Println("client drop packet ", clientDrop)
 		}
 	}
 }

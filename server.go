@@ -156,18 +156,12 @@ func serverSocketToQueue(serverSendto string, srcPort int) {
 			reduntAdd(reFBuf)
 		}
 
-		_, err := mServerQueue.Put(fBuf)
+		_, err := mServerQueue.Push(fBuf)
 
 		if err != nil {
 			serverDrop++
 			println("server drop packet ", serverDrop)
-
-			if serverDrop > 1000000 {
-				serverDrop = 0
-			}
 			poolPut(fBuf)
-			//出现丢包就等一等
-			time.Sleep(10 * time.Millisecond)
 		}
 	}
 }

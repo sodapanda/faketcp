@@ -5,7 +5,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"net/http"
 	"strings"
 	"time"
 
@@ -13,6 +12,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+
+	"net/http"
+	_ "net/http/pprof"
 
 	"github.com/songgao/water"
 )
@@ -41,6 +43,9 @@ var enableDebugLog bool
 //todo 发送延迟和接收延迟分别定义
 
 func main() {
+	go func() {
+		http.ListenAndServe(":8080", nil)
+	}()
 	isServer := flag.Bool("s", false, "is server")
 	fClientTunDstIP := flag.String("clientTunDstIP", "", "dst ip")
 	fClientTunDstPort := flag.Int("clientTunDstPort", 0, "dst port")
