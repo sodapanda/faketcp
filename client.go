@@ -10,7 +10,8 @@ import (
 	"github.com/theodesp/blockingQueues"
 )
 
-var clientConnF *net.UDPConn
+var clientConn *net.UDPConn
+var clientAddr *net.UDPAddr
 var mClientQueue *blockingQueues.BlockingQueue
 var clientDrop int
 var clientSendCount int
@@ -88,7 +89,7 @@ func clientTunToSocket(tun *water.Interface) {
 		if enableLog {
 			mSb.WriteString(fmt.Sprintf("%d\n", int(cLastRecPacket.ipID)))
 		}
-		_, err = clientConnF.Write(cLastRecPacket.payload)
+		_, err = clientConn.WriteToUDP(cLastRecPacket.payload, clientAddr)
 		endTs := time.Now().UnixNano()
 		if enableDebugLog {
 			debugRecSb.WriteString(fmt.Sprintf("%d,%d,%d\n", startTs, endTs, endTs-startTs))
@@ -120,7 +121,7 @@ func clientQueueToSocket() {
 		if enableLog {
 			mSb.WriteString(fmt.Sprintf("%d\n", int(cLastRecPacket.ipID)))
 		}
-		_, err := clientConnF.Write(cLastRecPacket.payload)
+		_, err := clientConn.WriteToUDP(cLastRecPacket.payload, clientAddr)
 		clientReceiveCount++
 		checkError(err)
 		poolPut(fBuf)
@@ -134,27 +135,19 @@ func clientSocketToQueue(socketListenPort string, serverIP string, serverPort in
 	conn, err := net.ListenUDP("udp", udpAddr)
 	checkError(err)
 	fmt.Printf("client listen socket %s\n", udpAddr)
+	clientConn = conn
 	dstIP := net.ParseIP(serverIP).To4()
-	clientConnF = nil
+	srcIP := net.IP{10, 1, 1, 2}.To4()
 	for {
 		fBuf := poolGet()
-		lenU := 0
-		if clientConnF == nil {
-			var addr *net.UDPAddr
-			lenU, addr, _ = conn.ReadFromUDP(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
-			conn.Close()
-			clientConnF, _ = net.DialUDP("udp4", udpAddr, addr)
-			fmt.Println("clientConnF Dial ", udpAddr, addr)
-		} else {
-			lenU, _ = clientConnF.Read(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
-		}
+		lenU, cAddr, _ := conn.ReadFromUDP(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
+		clientAddr = cAddr
 
 		fBuf.len = lenU + header.IPv4MinimumSize + header.TCPMinimumSize
-		fBuf.debugTs = time.Now().UnixNano()
 
 		packet := fBuf.data[:fBuf.len]
 		fPacket := FPacket{}
-		fPacket.srcIP = net.IP{10, 1, 1, 2}.To4()
+		fPacket.srcIP = srcIP
 		fPacket.dstIP = dstIP
 		fPacket.srcPort = 8888
 		fPacket.dstPort = uint16(serverPort)
