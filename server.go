@@ -127,13 +127,13 @@ func serverSocketToQueue(serverSendto string, srcPort int) {
 	conn, err := net.DialUDP("udp", nil, udpAddr)
 	checkError(err)
 	serverConn = conn
+	fec := newFec(2, 1)
+	readBuf := make([]byte, fecInputStdLen)
 
 	for {
-		fBuf := poolGet()
-		length, _ := serverConn.Read(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
+		length, _ := serverConn.Read(readBuf[0:])
+		fmt.Println("server read len ", length)
 		//这里不能改变pool里每个对象的slice大小，因为改小了的话，下一个包可能不够用
-		fBuf.len = length + header.IPv4MinimumSize + header.TCPMinimumSize
-		fBuf.debugTs = time.Now().UnixNano()
 		//在这里包装成IP包 入队列直接是IP包
 		fPacket := FPacket{
 			srcIP:   net.IP{10, 1, 1, 2}.To4(),
@@ -145,23 +145,20 @@ func serverSocketToQueue(serverSendto string, srcPort int) {
 			seqNum:  mSerSeq + uint32(length),
 			ackNum:  lastRecPacket.seqNum + uint32(len(lastRecPacket.payload)),
 		}
-		craftPacket(fBuf.data[:fBuf.len], &fPacket)
 
-		if sendDelay > 0 {
-			reFBuf := poolGet()
-			reFBuf.len = fBuf.len
-			copy(reFBuf.data, fBuf.data)
-			reFBuf.enQueueTS = time.Now().UnixNano()
-			reFBuf.waitTime = int64(sendDelay) * int64(time.Millisecond)
-			reduntAdd(reFBuf)
+		result := make([]*FBuffer, 3)
+		for i := range result {
+			result[i] = poolGet()
 		}
 
-		_, err := mServerQueue.Push(fBuf)
+		fec.encode(readBuf[0:], length, &fPacket, result)
 
-		if err != nil {
-			serverDrop++
-			println("server drop packet ", serverDrop)
-			poolPut(fBuf)
+		for _, subBuf := range result {
+			_, err := mServerQueue.Push(subBuf)
+			if err != nil {
+				serverDrop++
+				println("server drop packet ", serverDrop)
+			}
 		}
 	}
 }

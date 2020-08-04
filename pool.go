@@ -17,7 +17,7 @@ type FBuffer struct {
 var bufPool = sync.Pool{
 	New: func() interface{} {
 		buffer := FBuffer{}
-		buffer.data = make([]byte, 2000)
+		buffer.data = make([]byte, 1400)
 		return &buffer
 	},
 }

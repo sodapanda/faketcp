@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	fecInputStdLen = 8
+	fecInputStdLen = 1400
 )
 
 type rsFec struct {
@@ -73,7 +73,7 @@ func craftSubPacket(subp *subPacket, fPacket *FPacket, result *FBuffer) {
 	binary.BigEndian.PutUint16(buff[iPLen:], subp.parentLength)
 
 	copy(buff[iPayload:], subp.data.data[:subp.data.len])
-	craftPacket(buff, fPacket)
+	craftPacket(buff[:result.len], fPacket)
 }
 
 func unPackSub(data []byte, result *subPacket) {
@@ -150,7 +150,7 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 		//合并
 		copy(result.data[0:], tmp[0])
 		copy(result.data[subPkt.data.len:], tmp[1])
-		result.len = subPkt.data.len + subPkt.data.len
+		result.len = int(subPkt.parentLength)
 		for _, subP := range groupS {
 			if subP != nil {
 				poolPut(subP.data)
