@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"time"
 
+	"github.com/emirpasic/gods/maps/linkedhashmap"
 	"github.com/google/netstack/tcpip/header"
 	"github.com/klauspost/reedsolomon"
 )
@@ -16,9 +17,9 @@ type rsFec struct {
 	encoder reedsolomon.Encoder
 }
 
-//header 11 byte
+//header 12 byte
 type subPacket struct {
-	data         []byte
+	data         *FBuffer
 	parentID     uint64
 	indexInRS    uint16
 	parentLength uint16
@@ -48,7 +49,9 @@ func (fec *rsFec) encode(parentPkt []byte, parentLen int, fPacket *FPacket, resu
 		subPkt.parentID = parentID
 		subPkt.indexInRS = uint16(i)
 		subPkt.parentLength = uint16(parentLen)
-		subPkt.data = v
+		subPkt.data = &FBuffer{}
+		subPkt.data.data = v
+		subPkt.data.len = len(v)
 		craftSubPacket(subPkt, fPacket, result[i])
 	}
 }
@@ -64,11 +67,97 @@ func craftSubPacket(subp *subPacket, fPacket *FPacket, result *FBuffer) {
 	iPayload := iPLen + 2
 
 	buff := result.data
-	result.len = 40 + 12 + len(subp.data)
+	result.len = 40 + 12 + subp.data.len
 	binary.BigEndian.PutUint64(buff[iID:], subp.parentID)
 	binary.BigEndian.PutUint16(buff[iRs:], subp.indexInRS)
 	binary.BigEndian.PutUint16(buff[iPLen:], subp.parentLength)
 
-	copy(buff[iPayload:], subp.data)
+	copy(buff[iPayload:], subp.data.data[:subp.data.len])
 	craftPacket(buff, fPacket)
+}
+
+func unPackSub(data []byte, result *subPacket) {
+	parentID := binary.BigEndian.Uint64(data[0:])
+	rs := binary.BigEndian.Uint16(data[8:])
+	pLen := binary.BigEndian.Uint16(data[8+2:])
+	payLoad := data[12:]
+
+	result.parentID = parentID
+	result.indexInRS = rs
+	result.parentLength = pLen
+	result.data = poolGet()
+	result.data.len = len(payLoad)
+	copy(result.data.data, payLoad)
+}
+
+type fecRecvCache struct {
+	linkMap *linkedhashmap.Map
+	capLen  int
+}
+
+func newRecvCache(size int) *fecRecvCache {
+	cache := new(fecRecvCache)
+	cache.linkMap = linkedhashmap.New()
+	cache.capLen = size
+
+	return cache
+}
+
+func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) bool {
+	//看看key是否存在，不存在的话创建，并且把[][]byte造好，为了等下解码
+	//放进去看看够不够2个，够了看看是不是两个原始包，是的话直接合并，不是的话解码合并
+	_, found := fc.linkMap.Get(subPkt.parentID)
+	if !found {
+		fc.linkMap.Put(subPkt.parentID, make([]*subPacket, 3))
+	}
+
+	if fc.linkMap.Size() > fc.capLen {
+		first, _ := fc.linkMap.Get(fc.linkMap.Keys()[0])
+		firstP := first.(*subPacket)
+		poolPut(firstP.data)
+		fc.linkMap.Remove(first)
+	}
+
+	group, _ := fc.linkMap.Get(subPkt.parentID)
+	groupS := group.([]*subPacket)
+	groupS[subPkt.indexInRS] = subPkt
+
+	gotCount := 0
+	gotRs := false
+
+	for i, v := range groupS {
+		if v != nil {
+			gotCount++
+		}
+		if i == 2 {
+			gotRs = true
+		}
+	}
+
+	if gotCount == 2 {
+		tmp := make([][]byte, 3)
+		if gotRs {
+			//现场解码
+			for i, subP := range groupS {
+				if subP == nil {
+					tmp[i] = nil
+				} else {
+					tmp[i] = subP.data.data[:subP.data.len]
+				}
+			}
+			fec.decode(tmp)
+		}
+		//合并
+		copy(result.data[0:], tmp[0])
+		copy(result.data[subPkt.data.len:], tmp[1])
+		result.len = subPkt.data.len + subPkt.data.len
+		for _, subP := range groupS {
+			if subP != nil {
+				poolPut(subP.data)
+			}
+		}
+		return true
+	}
+
+	return false
 }
