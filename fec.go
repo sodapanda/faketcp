@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"fmt"
 	"time"
 
 	"github.com/emirpasic/gods/maps/linkedhashmap"
@@ -112,10 +113,16 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 	}
 
 	if fc.linkMap.Size() > fc.capLen {
-		first, _ := fc.linkMap.Get(fc.linkMap.Keys()[0])
-		firstP := first.(*subPacket)
-		poolPut(firstP.data)
-		fc.linkMap.Remove(first)
+		firstKey := fc.linkMap.Keys()[0]
+		first, _ := fc.linkMap.Get(firstKey)
+		firstP := first.([]*subPacket)
+		for _, subp := range firstP {
+			if subp != nil {
+				poolPut(subp.data)
+			}
+		}
+		fc.linkMap.Remove(firstKey)
+		fmt.Println("append start drop")
 	}
 
 	group, _ := fc.linkMap.Get(subPkt.parentID)
@@ -156,6 +163,7 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 				poolPut(subP.data)
 			}
 		}
+		fc.linkMap.Remove(subPkt.parentID)
 		return true
 	}
 

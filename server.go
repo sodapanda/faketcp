@@ -132,7 +132,8 @@ func serverSocketToQueue(serverSendto string, srcPort int) {
 
 	for {
 		length, _ := serverConn.Read(readBuf[0:])
-		fmt.Println("server read len ", length)
+		// fmt.Println("server read len ", length)
+		//1340~1372 32 = 8 + 20 + 4
 		//这里不能改变pool里每个对象的slice大小，因为改小了的话，下一个包可能不够用
 		//在这里包装成IP包 入队列直接是IP包
 		fPacket := FPacket{

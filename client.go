@@ -78,22 +78,24 @@ func handShake(tun *water.Interface) {
 func clientTunToSocket(tun *water.Interface) {
 	fmt.Println("client tun")
 	buffer := make([]byte, 2000)
+	fecRcv := newRecvCache(1000)
+	fec := newFec(2, 1)
 
 	for {
 		n, err := tun.Read(buffer)
 		checkError(err)
 		data := buffer[:n]
 
-		unpacket(data, &cLastRecPacket)
-		startTs := time.Now().UnixNano()
-		if enableLog {
-			mSb.WriteString(fmt.Sprintf("%d\n", int(cLastRecPacket.ipID)))
+		subPkt := new(subPacket)
+		unPackSub(data[40:], subPkt)
+		result := poolGet()
+		done := fecRcv.append(subPkt, fec, result)
+		if done {
+			_, err = clientConn.WriteToUDP(result.data[:result.len], clientAddr)
+		} else {
+			poolPut(result)
 		}
-		_, err = clientConn.WriteToUDP(cLastRecPacket.payload, clientAddr)
-		endTs := time.Now().UnixNano()
-		if enableDebugLog {
-			debugRecSb.WriteString(fmt.Sprintf("%d,%d,%d\n", startTs, endTs, endTs-startTs))
-		}
+
 		clientReceiveCount++
 		checkError(err)
 	}
