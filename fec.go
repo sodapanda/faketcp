@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/binary"
-	"fmt"
 	"time"
 
 	"github.com/emirpasic/gods/maps/linkedhashmap"
@@ -104,6 +103,8 @@ func newRecvCache(size int) *fecRecvCache {
 	return cache
 }
 
+var decodeCount int
+
 func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) bool {
 	//看看key是否存在，不存在的话创建，并且把[][]byte造好，为了等下解码
 	//放进去看看够不够2个，够了看看是不是两个原始包，是的话直接合并，不是的话解码合并
@@ -122,7 +123,6 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 			}
 		}
 		fc.linkMap.Remove(firstKey)
-		fmt.Println("append start drop")
 	}
 
 	group, _ := fc.linkMap.Get(subPkt.parentID)
@@ -136,23 +136,25 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 		if v != nil {
 			gotCount++
 		}
-		if i == 2 {
+		if i == 2 && v != nil {
 			gotRs = true
 		}
 	}
 
 	if gotCount == 2 {
 		tmp := make([][]byte, 3)
+
+		for i, subP := range groupS {
+			if subP == nil {
+				tmp[i] = nil
+			} else {
+				tmp[i] = subP.data.data[:subP.data.len]
+			}
+		}
 		if gotRs {
 			//现场解码
-			for i, subP := range groupS {
-				if subP == nil {
-					tmp[i] = nil
-				} else {
-					tmp[i] = subP.data.data[:subP.data.len]
-				}
-			}
 			fec.decode(tmp)
+			decodeCount++
 		}
 		//合并
 		copy(result.data[0:], tmp[0])

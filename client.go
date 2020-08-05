@@ -78,7 +78,7 @@ func handShake(tun *water.Interface) {
 func clientTunToSocket(tun *water.Interface) {
 	fmt.Println("client tun")
 	buffer := make([]byte, 2000)
-	fecRcv := newRecvCache(1000)
+	fecRcv := newRecvCache(7000)
 	fec := newFec(2, 1)
 
 	for {

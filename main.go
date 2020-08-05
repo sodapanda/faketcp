@@ -127,6 +127,7 @@ func main() {
 		fmt.Println("client drop ", clientDrop)
 		fmt.Println("client send count ", clientSendCount)
 		fmt.Println("client receive count ", clientReceiveCount)
+		fmt.Println("client reconstruct ", decodeCount)
 		if enableLog {
 			ioutil.WriteFile("clientread.txt", []byte(mSb.String()), 0644)
 
