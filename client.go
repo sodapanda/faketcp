@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/google/netstack/tcpip/header"
 	"github.com/songgao/water"
@@ -17,7 +16,6 @@ var clientDrop int
 var clientSendCount int
 var clientReceiveCount int
 var cLastRecPacket FPacket
-var clientTunToSocketQueue *OrderQueue
 
 var reduntCount int
 var reorderCount int
@@ -29,7 +27,6 @@ var poolWrongFlag bool
 func handShake(tun *water.Interface) {
 	//发送Syn
 	mClientQueue, _ = blockingQueues.NewArrayBlockingQueue(uint64(queueLen))
-	clientTunToSocketQueue = NewOrderQueue(2000)
 
 	srcIP := net.ParseIP(clientTunSrcIP)
 	dstIP := net.ParseIP(clientTunDstIP)
@@ -75,58 +72,45 @@ func handShake(tun *water.Interface) {
 	fmt.Println("client send ack")
 }
 
+var fecRcv *fecRecvCache
+
 func clientTunToSocket(tun *water.Interface) {
-	fmt.Println("client tun")
-	buffer := make([]byte, 2000)
-	fecRcv := newRecvCache(7000)
-	fec := newFec(2, 1)
+	if eFec {
+		fmt.Println("client tun to socket with FEC")
+		buffer := make([]byte, 2000)
+		fecRcv = newRecvCache(7000)
+		fec := newFec(2, 1)
 
-	for {
-		n, err := tun.Read(buffer)
-		checkError(err)
-		data := buffer[:n]
+		for {
+			n, err := tun.Read(buffer)
+			checkError(err)
+			data := buffer[:n]
 
-		subPkt := new(subPacket)
-		unPackSub(data[40:], subPkt)
-		result := poolGet()
-		done := fecRcv.append(subPkt, fec, result)
-		if done {
-			_, err = clientConn.WriteToUDP(result.data[:result.len], clientAddr)
-		} else {
-			poolPut(result)
+			subPkt := new(subPacket)
+			unPackSub(data[40:], subPkt)
+			result := poolGet()
+			done := fecRcv.append(subPkt, fec, result)
+			if done {
+				_, err = clientConn.WriteToUDP(result.data[:result.len], clientAddr)
+			} else {
+				poolPut(result)
+			}
+
+			clientReceiveCount++
+			checkError(err)
 		}
+	} else {
+		buffer := make([]byte, 2000)
+		for {
+			n, err := tun.Read(buffer)
+			checkError(err)
+			data := buffer[:n]
 
-		clientReceiveCount++
-		checkError(err)
-	}
-}
-
-func clientTunToQueue(tun *water.Interface) {
-	fmt.Println("client tun to queue")
-
-	for {
-		fBuf := poolGet()
-		readLen, err := tun.Read(fBuf.data[0:])
-		fBuf.len = readLen
-		fBuf.id = int(header.IPv4(fBuf.data[:header.IPv4MinimumSize]).ID())
-		checkError(err)
-		clientReceiveCount = clientReceiveCount + 1
-		clientTunToSocketQueue.Put(fBuf)
-	}
-}
-
-func clientQueueToSocket() {
-	for {
-		fBuf := clientTunToSocketQueue.Get()
-		data := fBuf.data[:fBuf.len]
-		unpacket(data, &cLastRecPacket)
-		if enableLog {
-			mSb.WriteString(fmt.Sprintf("%d\n", int(cLastRecPacket.ipID)))
+			unpacket(data, &cLastRecPacket)
+			_, err = clientConn.WriteToUDP(cLastRecPacket.payload, clientAddr)
+			clientReceiveCount++
+			checkError(err)
 		}
-		_, err := clientConn.WriteToUDP(cLastRecPacket.payload, clientAddr)
-		clientReceiveCount++
-		checkError(err)
-		poolPut(fBuf)
 	}
 }
 
@@ -166,38 +150,12 @@ func clientSocketToQueue(socketListenPort string, serverIP string, serverPort in
 
 		craftPacket(packet, &fPacket)
 
-		if sendDelay > 0 {
-			reFBuf := poolGet()
-			reFBuf.len = fBuf.len
-			copy(reFBuf.data, fBuf.data)
-			reFBuf.enQueueTS = time.Now().UnixNano()
-			reFBuf.waitTime = int64(sendDelay) * int64(time.Millisecond)
-			reduntAdd(reFBuf)
-		}
-
 		_, err := mClientQueue.Push(fBuf)
 
 		if err != nil {
 			clientDrop++
 			poolPut(fBuf)
 			fmt.Println("client drop packet ", clientDrop)
-		}
-	}
-}
-
-func clientReduntWork(tun *water.Interface) {
-	reduntInit()
-
-	for {
-		fBuf := reduntGet()
-		data := fBuf.data[:fBuf.len]
-
-		writeLen, err := tun.Write(data)
-		serverSendCount++
-		poolPut(fBuf)
-		checkError(err)
-		if writeLen != len(data) {
-			fmt.Println("client tun write not full")
 		}
 	}
 }
@@ -209,10 +167,6 @@ func clientQueueToTun(tun *water.Interface) {
 		data := fBuf.data[:fBuf.len]
 
 		writeLen, err := tun.Write(data)
-		endTs := time.Now().UnixNano()
-		if enableDebugLog {
-			debugSendSb.WriteString(fmt.Sprintf("%d,%d,%d\n", fBuf.debugTs, endTs, endTs-fBuf.debugTs))
-		}
 		clientSendCount++
 		poolPut(fBuf)
 		checkError(err)

@@ -21,11 +21,9 @@ var serverReceiveCount int
 var lastRecPacket FPacket
 var mSerSeq uint32
 var reduntCounter int
-var serverTunToSocketQueue *OrderQueue
 
 func serverHandShake(tun *water.Interface) {
 	mServerQueue, _ = blockingQueues.NewArrayBlockingQueue(uint64(queueLen))
-	serverTunToSocketQueue = NewOrderQueue(2000)
 	//等待syn
 	fmt.Println("server waiting for SYN")
 	packet := make([]byte, 40)
@@ -86,121 +84,103 @@ func serverTunToSocket(tun *water.Interface) {
 			fmt.Println("server tun read len 0 ")
 			os.Exit(1)
 		}
-		startTs := time.Now().UnixNano()
 		checkError(err)
 		data := buffer[:len]
 		_, err = serverConn.Write(data[header.IPv4MinimumSize+header.TCPMinimumSize:])
-		endTs := time.Now().UnixNano()
-		if enableDebugLog {
-			debugRecSb.WriteString(fmt.Sprintf("%d,%d,%d\n", startTs, endTs, endTs-startTs))
-		}
 		serverReceiveCount++
 		checkError(err)
 	}
 }
 
-func serverTunToQueue(tun *water.Interface) {
-	for {
-		fBuf := poolGet()
-		readLen, err := tun.Read(fBuf.data)
-		checkError(err)
-		fBuf.len = readLen
-		fBuf.id = int(header.IPv4(fBuf.data[:header.IPv4MinimumSize]).ID())
-		serverTunToSocketQueue.Put(fBuf)
-	}
-}
-
-func serverQueueToSocket() {
-	for {
-		fBuf := serverTunToSocketQueue.Get()
-		data := fBuf.data[:fBuf.len]
-		_, err := serverConn.Write(data[header.IPv4MinimumSize+header.TCPMinimumSize:])
-		checkError(err)
-	}
-}
-
 func serverSocketToQueue(serverSendto string, srcPort int) {
-	fmt.Println("server socket to queue")
+	if eFec {
+		fmt.Println("server socket to queue with FEC")
+		udpAddr, err := net.ResolveUDPAddr("udp4", serverSendto)
+		checkError(err)
+		conn, err := net.DialUDP("udp", nil, udpAddr)
+		checkError(err)
+		serverConn = conn
+		fec := newFec(2, 1)
+		readBuf := make([]byte, fecInputStdLen)
 
-	udpAddr, err := net.ResolveUDPAddr("udp4", serverSendto)
-	checkError(err)
-	conn, err := net.DialUDP("udp", nil, udpAddr)
-	checkError(err)
-	serverConn = conn
-	fec := newFec(2, 1)
-	readBuf := make([]byte, fecInputStdLen)
+		for {
+			length, _ := serverConn.Read(readBuf[0:])
+			// fmt.Println("server read len ", length)
+			//1340~1372 32 = 8 + 20 + 4
+			//这里不能改变pool里每个对象的slice大小，因为改小了的话，下一个包可能不够用
+			//在这里包装成IP包 入队列直接是IP包
+			fPacket := FPacket{
+				srcIP:   net.IP{10, 1, 1, 2}.To4(),
+				dstIP:   peerIP.To4(),
+				srcPort: uint16(srcPort),
+				dstPort: uint16(peerPort),
+				syn:     false,
+				ack:     true,
+				seqNum:  mSerSeq + uint32(length),
+				ackNum:  lastRecPacket.seqNum + uint32(len(lastRecPacket.payload)),
+			}
 
-	for {
-		length, _ := serverConn.Read(readBuf[0:])
-		// fmt.Println("server read len ", length)
-		//1340~1372 32 = 8 + 20 + 4
-		//这里不能改变pool里每个对象的slice大小，因为改小了的话，下一个包可能不够用
-		//在这里包装成IP包 入队列直接是IP包
-		fPacket := FPacket{
-			srcIP:   net.IP{10, 1, 1, 2}.To4(),
-			dstIP:   peerIP.To4(),
-			srcPort: uint16(srcPort),
-			dstPort: uint16(peerPort),
-			syn:     false,
-			ack:     true,
-			seqNum:  mSerSeq + uint32(length),
-			ackNum:  lastRecPacket.seqNum + uint32(len(lastRecPacket.payload)),
+			result := make([]*FBuffer, 3)
+			for i := range result {
+				result[i] = poolGet()
+			}
+
+			fec.encode(readBuf[0:], length, &fPacket, result)
+
+			for _, subBuf := range result {
+				_, err := mServerQueue.Push(subBuf)
+				if err != nil {
+					serverDrop++
+					println("server drop packet ", serverDrop)
+				}
+			}
 		}
+	} else {
+		fmt.Println("server socket to queue")
+		udpAddr, err := net.ResolveUDPAddr("udp4", serverSendto)
+		checkError(err)
+		conn, err := net.DialUDP("udp", nil, udpAddr)
+		checkError(err)
+		serverConn = conn
 
-		result := make([]*FBuffer, 3)
-		for i := range result {
-			result[i] = poolGet()
-		}
+		for {
+			fBuf := poolGet()
+			length, _ := serverConn.Read(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
+			//这里不能改变pool里每个对象的slice大小，因为改小了的话，下一个包可能不够用
+			fBuf.len = length + header.IPv4MinimumSize + header.TCPMinimumSize
+			fBuf.debugTs = time.Now().UnixNano()
+			//在这里包装成IP包 入队列直接是IP包
+			fPacket := FPacket{
+				srcIP:   net.IP{10, 1, 1, 2}.To4(),
+				dstIP:   peerIP.To4(),
+				srcPort: uint16(srcPort),
+				dstPort: uint16(peerPort),
+				syn:     false,
+				ack:     true,
+				seqNum:  mSerSeq + uint32(length),
+				ackNum:  lastRecPacket.seqNum + uint32(len(lastRecPacket.payload)),
+			}
+			craftPacket(fBuf.data[:fBuf.len], &fPacket)
 
-		fec.encode(readBuf[0:], length, &fPacket, result)
+			_, err := mServerQueue.Push(fBuf)
 
-		for _, subBuf := range result {
-			_, err := mServerQueue.Push(subBuf)
 			if err != nil {
 				serverDrop++
 				println("server drop packet ", serverDrop)
+				poolPut(fBuf)
 			}
 		}
 	}
 }
 
-func reduntWorker(tun *water.Interface) {
-	reduntInit()
-	for {
-		fBuf := reduntGet()
-		data := fBuf.data[:fBuf.len]
-
-		writeLen, err := tun.Write(data)
-		serverSendCount++
-		poolPut(fBuf)
-		checkError(err)
-		if writeLen != len(data) {
-			fmt.Println("server tun write not full")
-		}
-	}
-}
-
 func serverQueueToTun(tun *water.Interface) {
-	logPacket := FPacket{}
-	logPacket.srcIP = make([]byte, 4)
-	logPacket.dstIP = make([]byte, 4)
 	for {
 		item, _ := mServerQueue.Get()
 		fBuf := item.(*FBuffer)
 		data := fBuf.data[:fBuf.len]
 
-		if enableLog {
-			unpacket(data, &logPacket)
-			mSb.WriteString(fmt.Sprintf("%d\n", int(logPacket.ipID)))
-		}
-
 		writeLen, err := tun.Write(data)
 		serverSendCount++
-
-		if enableDebugLog {
-			nowTs := time.Now().UnixNano()
-			debugSendSb.WriteString(fmt.Sprintf("%d,%d,%d\n", fBuf.debugTs, nowTs, nowTs-fBuf.debugTs))
-		}
 
 		poolPut(fBuf)
 		checkError(err)

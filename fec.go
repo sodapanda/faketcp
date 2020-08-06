@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"fmt"
 	"time"
 
 	"github.com/emirpasic/gods/maps/linkedhashmap"
@@ -170,4 +171,13 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 	}
 
 	return false
+}
+
+func (fc *fecRecvCache) dump() {
+	fc.linkMap.Each(func(key interface{}, value interface{}) {
+		groupS := value.([]*subPacket)
+		if groupS[0] != nil || groupS[1] != nil {
+			fmt.Println("found real loss ", key)
+		}
+	})
 }
