@@ -94,7 +94,8 @@ func unPackSub(data []byte, result *subPacket) {
 	result.parentID = parentID
 	result.indexInRS = rs
 	result.parentLength = pLen
-	result.data = poolGet()
+	result.data = &FBuffer{}
+	result.data.data = make([]byte, fecInputStdLen)
 	result.data.len = len(payLoad)
 	copy(result.data.data, payLoad)
 }
@@ -124,13 +125,6 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 
 	if fc.linkMap.Size() > fc.capLen {
 		firstKey := fc.linkMap.Keys()[0]
-		first, _ := fc.linkMap.Get(firstKey)
-		firstP := first.([]*subPacket)
-		for _, subp := range firstP {
-			if subp != nil {
-				poolPut(subp.data)
-			}
-		}
 		fc.linkMap.Remove(firstKey)
 	}
 
