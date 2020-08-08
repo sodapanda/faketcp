@@ -146,7 +146,7 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 		}
 	}
 
-	if gotCount >= mSegCount {
+	if gotCount == mSegCount {
 		tmp := make([][]byte, mSegCount+mFecCount)
 
 		for i, subP := range groupS {
@@ -170,7 +170,6 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 				poolPut(subP.data)
 			}
 		}
-		fc.linkMap.Remove(subPkt.parentID)
 		return true
 	}
 
@@ -178,10 +177,5 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 }
 
 func (fc *fecRecvCache) dump() {
-	fc.linkMap.Each(func(key interface{}, value interface{}) {
-		groupS := value.([]*subPacket)
-		if groupS[0] != nil || groupS[1] != nil {
-			fmt.Println("found real loss ", key)
-		}
-	})
+	fmt.Println("place holder")
 }

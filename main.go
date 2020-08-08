@@ -88,9 +88,9 @@ func main() {
 		fmt.Println("client send count ", clientSendCount)
 		fmt.Println("client receive count ", clientReceiveCount)
 		fmt.Println("client reconstruct ", decodeCount)
-		if eFec {
-			fecRcv.dump()
-		}
+		// if eFec {
+		// 	fecRcv.dump()
+		// }
 	}
 }
 
