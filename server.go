@@ -100,7 +100,7 @@ func serverSocketToQueue(serverSendto string, srcPort int) {
 		conn, err := net.DialUDP("udp", nil, udpAddr)
 		checkError(err)
 		serverConn = conn
-		fec := newFec(2, 1)
+		fec := newFec(mSegCount, mFecCount)
 		readBuf := make([]byte, fecInputStdLen)
 
 		for {
@@ -120,7 +120,7 @@ func serverSocketToQueue(serverSendto string, srcPort int) {
 				ackNum:  lastRecPacket.seqNum + uint32(len(lastRecPacket.payload)),
 			}
 
-			result := make([]*FBuffer, 3)
+			result := make([]*FBuffer, mSegCount+mFecCount)
 			for i := range result {
 				result[i] = poolGet()
 			}

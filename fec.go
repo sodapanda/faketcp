@@ -34,12 +34,20 @@ func newFec(dataCount int, rsCount int) *rsFec {
 	return fec
 }
 
+//上层包传入时长度已经对其到标准长度，上层包的真实长度传入，打包tcp的参数,返回的结果是FBuffer的list
 func (fec *rsFec) encode(parentPkt []byte, parentLen int, fPacket *FPacket, result []*FBuffer) {
-	subPktLen := fecInputStdLen / 2
-	calcBuf := make([][]byte, 3)
-	calcBuf[0] = parentPkt[:subPktLen]
-	calcBuf[1] = parentPkt[subPktLen:]
-	calcBuf[2] = make([]byte, subPktLen)
+	subPktLen := fecInputStdLen / mSegCount
+	calcBuf := make([][]byte, mSegCount+mFecCount)
+	//把传入的标准长度包切割成相等大小
+	for i := 0; i < mSegCount; i++ {
+		start := i * subPktLen
+		end := start + subPktLen
+		calcBuf[i] = parentPkt[start:end]
+	}
+	//给fec包分配空间
+	for i := 0; i < mFecCount; i++ {
+		calcBuf[mSegCount+i] = make([]byte, subPktLen)
+	}
 
 	fec.encoder.Encode(calcBuf)
 
@@ -111,7 +119,7 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 	//放进去看看够不够2个，够了看看是不是两个原始包，是的话直接合并，不是的话解码合并
 	_, found := fc.linkMap.Get(subPkt.parentID)
 	if !found {
-		fc.linkMap.Put(subPkt.parentID, make([]*subPacket, 3))
+		fc.linkMap.Put(subPkt.parentID, make([]*subPacket, mSegCount+mFecCount))
 	}
 
 	if fc.linkMap.Size() > fc.capLen {
@@ -131,19 +139,15 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 	groupS[subPkt.indexInRS] = subPkt
 
 	gotCount := 0
-	gotRs := false
 
-	for i, v := range groupS {
+	for _, v := range groupS {
 		if v != nil {
 			gotCount++
 		}
-		if i == 2 && v != nil {
-			gotRs = true
-		}
 	}
 
-	if gotCount == 2 {
-		tmp := make([][]byte, 3)
+	if gotCount >= mSegCount {
+		tmp := make([][]byte, mSegCount+mFecCount)
 
 		for i, subP := range groupS {
 			if subP == nil {
@@ -152,14 +156,14 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 				tmp[i] = subP.data.data[:subP.data.len]
 			}
 		}
-		if gotRs {
-			//现场解码
-			fec.decode(tmp)
-			decodeCount++
-		}
+		//现场解码
+		fec.decode(tmp)
+		decodeCount++
 		//合并
-		copy(result.data[0:], tmp[0])
-		copy(result.data[subPkt.data.len:], tmp[1])
+		for i, v := range tmp[:mSegCount] {
+			copy(result.data[i*subPkt.data.len:], v)
+		}
+
 		result.len = int(subPkt.parentLength)
 		for _, subP := range groupS {
 			if subP != nil {

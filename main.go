@@ -23,6 +23,8 @@ var clientTunSrcIP = "10.1.1.2"
 var clientTunSrcPort = 8888
 var queueLen = 600
 var eFec = false
+var mSegCount = 1
+var mFecCount = 1
 
 var serverTunSrcPort = clientTunDstPort
 var serverTunSrcIP = "10.1.1.2"
@@ -39,6 +41,8 @@ func main() {
 	fClientTunDstPort := flag.Int("dport", 0, "client set, server port")
 	fQueueLen := flag.Int("qlen", 0, "queue len")
 	fEFec := flag.Bool("fec", false, "server and client,enable fec")
+	fSegCount := flag.Int("seg", 1, "one packet segment into")
+	fFecCount := flag.Int("fseg", 1, "fec segment count")
 	flag.Parse()
 
 	clientTunDstIP = *fClientTunDstIP
@@ -46,6 +50,8 @@ func main() {
 	serverTunSrcPort = clientTunDstPort
 	queueLen = *fQueueLen
 	eFec = *fEFec
+	mSegCount = *fSegCount
+	mFecCount = *fFecCount
 
 	tun := createTUN("faketcp")
 

@@ -27,13 +27,13 @@ import (
 
 func TestFec(t *testing.T) {
 	fmt.Println("test FEC")
-	fec := newFec(2, 1)
+	fec := newFec(mSegCount, mFecCount)
 	data := make([]byte, fecInputStdLen)
 	for i := range data {
 		data[i] = byte(i)
 	}
 
-	result := make([]*FBuffer, 3)
+	result := make([]*FBuffer, mSegCount+mFecCount)
 	for i := range result {
 		result[i] = poolGet()
 	}
@@ -74,4 +74,26 @@ func doRcv(packet []byte, fec *rsFec, fecRcv *fecRecvCache) {
 	} else {
 		fmt.Println("not done")
 	}
+}
+
+func TestDivid(t *testing.T) {
+	data := make([]int, 20)
+	for i := range data {
+		data[i] = i
+	}
+	seg := 4
+	rec := 2
+	segSize := len(data) / seg
+	rst := make([][]int, seg+rec)
+
+	for i := 0; i < seg; i++ {
+		start := i * segSize
+		end := start + segSize
+		rst[i] = data[start:end]
+	}
+	for i := 0; i < rec; i++ {
+		rst[seg+i] = make([]int, segSize)
+	}
+	fmt.Println(data)
+	fmt.Println(rst)
 }
