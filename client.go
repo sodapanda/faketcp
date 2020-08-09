@@ -127,7 +127,8 @@ func clientSocketToQueue(socketListenPort string, serverIP string, serverPort in
 	srcIP := net.IP{10, 1, 1, 2}.To4()
 	for {
 		fBuf := poolGet()
-		lenU, cAddr, _ := conn.ReadFromUDP(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
+		lenU, cAddr, err := conn.ReadFromUDP(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
+		checkError(err)
 		clientAddr = cAddr
 
 		fBuf.len = lenU + header.IPv4MinimumSize + header.TCPMinimumSize
@@ -151,7 +152,7 @@ func clientSocketToQueue(socketListenPort string, serverIP string, serverPort in
 
 		craftPacket(packet, &fPacket)
 
-		_, err := mClientQueue.Put(fBuf)
+		_, err = mClientQueue.Put(fBuf)
 
 		if err != nil {
 			clientDrop++

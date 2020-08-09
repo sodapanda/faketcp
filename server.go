@@ -142,7 +142,8 @@ func serverSocketToQueueNoFEC(serverSendto string, srcPort int) {
 
 	for {
 		fBuf := poolGet()
-		length, _ := serverConn.Read(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
+		length, err := serverConn.Read(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
+		checkError(err)
 		//这里不能改变pool里每个对象的slice大小，因为改小了的话，下一个包可能不够用
 		fBuf.len = length + header.IPv4MinimumSize + header.TCPMinimumSize
 		//在这里包装成IP包 入队列直接是IP包
@@ -158,7 +159,7 @@ func serverSocketToQueueNoFEC(serverSendto string, srcPort int) {
 		}
 		craftPacket(fBuf.data[:fBuf.len], &fPacket)
 
-		_, err := mServerQueue.Put(fBuf)
+		_, err = mServerQueue.Put(fBuf)
 
 		if err != nil {
 			serverDrop++
