@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"time"
 
 	"github.com/google/netstack/tcpip/header"
 	"github.com/songgao/water"
@@ -148,7 +147,6 @@ func serverSocketToQueue(serverSendto string, srcPort int) {
 			length, _ := serverConn.Read(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
 			//这里不能改变pool里每个对象的slice大小，因为改小了的话，下一个包可能不够用
 			fBuf.len = length + header.IPv4MinimumSize + header.TCPMinimumSize
-			fBuf.debugTs = time.Now().UnixNano()
 			//在这里包装成IP包 入队列直接是IP包
 			fPacket := FPacket{
 				srcIP:   net.IP{10, 1, 1, 2}.To4(),

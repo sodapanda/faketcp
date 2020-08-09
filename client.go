@@ -100,6 +100,7 @@ func clientTunToSocket(tun *water.Interface) {
 			checkError(err)
 		}
 	} else {
+		fmt.Println("client tun to socket")
 		buffer := make([]byte, 2000)
 		for {
 			n, err := tun.Read(buffer)
@@ -115,8 +116,6 @@ func clientTunToSocket(tun *water.Interface) {
 }
 
 func clientSocketToQueue(socketListenPort string, serverIP string, serverPort int) {
-	fmt.Println("client socket to queue")
-
 	udpAddr, err := net.ResolveUDPAddr("udp4", ":"+socketListenPort)
 	conn, err := net.ListenUDP("udp", udpAddr)
 	checkError(err)
@@ -161,6 +160,7 @@ func clientSocketToQueue(socketListenPort string, serverIP string, serverPort in
 }
 
 func clientQueueToTun(tun *water.Interface) {
+	fmt.Println("client queue to tun")
 	for {
 		item, _ := mClientQueue.Get()
 		fBuf := item.(*FBuffer)

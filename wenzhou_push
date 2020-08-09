@@ -1,1 +1,0 @@
-scp -P 17013 faketcp root@61.164.109.191:/root/faketcp

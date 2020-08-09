@@ -6,12 +6,9 @@ import (
 
 //FBuffer data and len
 type FBuffer struct {
-	data      []byte
-	len       int
-	id        int
-	enQueueTS int64
-	waitTime  int64
-	debugTs   int64
+	data []byte
+	len  int
+	id   int
 }
 
 var bufPool = sync.Pool{
