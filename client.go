@@ -74,44 +74,46 @@ func handShake(tun *water.Interface) {
 
 var fecRcv *fecRecvCache
 
-func clientTunToSocket(tun *water.Interface) {
-	if eFec {
-		fmt.Println("client tun to socket with FEC")
-		buffer := make([]byte, 2000)
-		fecRcv = newRecvCache(1000)
-		fec := newFec(mSegCount, mFecCount)
+func clientTunToSocketFEC(tun *water.Interface) {
+	fmt.Println("client tun to socket with FEC")
+	buffer := make([]byte, 2000)
+	fecRcv = newRecvCache(1000)
+	fec := newFec(mSegCount, mFecCount)
 
-		for {
-			n, err := tun.Read(buffer)
-			checkError(err)
-			data := buffer[:n]
+	for {
+		n, err := tun.Read(buffer)
+		checkError(err)
+		data := buffer[:n]
 
-			subPkt := new(subPacket)
-			unPackSub(data[40:], subPkt)
-			result := poolGet()
-			done := fecRcv.append(subPkt, fec, result)
-			if done {
-				_, err = clientConn.WriteToUDP(result.data[:result.len], clientAddr)
-			} else {
-				poolPut(result)
-			}
-
-			clientReceiveCount++
-			checkError(err)
+		subPkt := new(subPacket)
+		unPackSub(data[40:], subPkt)
+		result := poolGet()
+		done := fecRcv.append(subPkt, fec, result)
+		if done {
+			_, err = clientConn.WriteToUDP(result.data[:result.len], clientAddr)
+		} else {
+			poolPut(result)
 		}
-	} else {
-		fmt.Println("client tun to socket")
-		buffer := make([]byte, 2000)
-		for {
-			n, err := tun.Read(buffer)
-			checkError(err)
-			data := buffer[:n]
 
-			unpacket(data, &cLastRecPacket)
-			_, err = clientConn.WriteToUDP(cLastRecPacket.payload, clientAddr)
-			clientReceiveCount++
-			checkError(err)
-		}
+		clientReceiveCount++
+		checkError(err)
+	}
+}
+
+func clientTunToSocketNoFEC(tun *water.Interface) {
+	fmt.Println("client tun")
+	buffer := make([]byte, 2000)
+
+	for {
+		n, err := tun.Read(buffer)
+		checkError(err)
+		data := buffer[:n]
+
+		unpacket(data, &cLastRecPacket)
+
+		_, err = clientConn.WriteToUDP(cLastRecPacket.payload, clientAddr)
+		clientReceiveCount++
+		checkError(err)
 	}
 }
 
@@ -149,7 +151,7 @@ func clientSocketToQueue(socketListenPort string, serverIP string, serverPort in
 
 		craftPacket(packet, &fPacket)
 
-		_, err := mClientQueue.Push(fBuf)
+		_, err := mClientQueue.Put(fBuf)
 
 		if err != nil {
 			clientDrop++

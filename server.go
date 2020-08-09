@@ -91,82 +91,83 @@ func serverTunToSocket(tun *water.Interface) {
 	}
 }
 
-func serverSocketToQueue(serverSendto string, srcPort int) {
-	if eFec {
-		fmt.Println("server socket to queue with FEC")
-		udpAddr, err := net.ResolveUDPAddr("udp4", serverSendto)
-		checkError(err)
-		conn, err := net.DialUDP("udp", nil, udpAddr)
-		checkError(err)
-		serverConn = conn
-		fec := newFec(mSegCount, mFecCount)
-		readBuf := make([]byte, fecInputStdLen)
+func serverSocketToQueueFEC(serverSendto string, srcPort int) {
+	fmt.Println("server socket to queue with FEC")
+	udpAddr, err := net.ResolveUDPAddr("udp4", serverSendto)
+	checkError(err)
+	conn, err := net.DialUDP("udp", nil, udpAddr)
+	checkError(err)
+	serverConn = conn
+	fec := newFec(mSegCount, mFecCount)
+	readBuf := make([]byte, fecInputStdLen)
 
-		for {
-			length, _ := serverConn.Read(readBuf[0:])
-			// fmt.Println("server read len ", length)
-			//1340~1372 32 = 8 + 20 + 4
-			//这里不能改变pool里每个对象的slice大小，因为改小了的话，下一个包可能不够用
-			//在这里包装成IP包 入队列直接是IP包
-			fPacket := FPacket{
-				srcIP:   net.IP{10, 1, 1, 2}.To4(),
-				dstIP:   peerIP.To4(),
-				srcPort: uint16(srcPort),
-				dstPort: uint16(peerPort),
-				syn:     false,
-				ack:     true,
-				seqNum:  mSerSeq + uint32(length),
-				ackNum:  lastRecPacket.seqNum + uint32(len(lastRecPacket.payload)),
-			}
-
-			result := make([]*FBuffer, mSegCount+mFecCount)
-			for i := range result {
-				result[i] = poolGet()
-			}
-
-			fec.encode(readBuf[0:], length, &fPacket, result)
-
-			for _, subBuf := range result {
-				_, err := mServerQueue.Push(subBuf)
-				if err != nil {
-					serverDrop++
-					println("server drop packet ", serverDrop)
-				}
-			}
+	for {
+		length, _ := serverConn.Read(readBuf[0:])
+		fPacket := FPacket{
+			srcIP:   net.IP{10, 1, 1, 2}.To4(),
+			dstIP:   peerIP.To4(),
+			srcPort: uint16(srcPort),
+			dstPort: uint16(peerPort),
+			syn:     false,
+			ack:     true,
+			seqNum:  mSerSeq + uint32(length),
+			ackNum:  lastRecPacket.seqNum + uint32(len(lastRecPacket.payload)),
 		}
-	} else {
-		fmt.Println("server socket to queue")
-		udpAddr, err := net.ResolveUDPAddr("udp4", serverSendto)
-		checkError(err)
-		conn, err := net.DialUDP("udp", nil, udpAddr)
-		checkError(err)
-		serverConn = conn
 
-		for {
-			fBuf := poolGet()
-			length, _ := serverConn.Read(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
-			//这里不能改变pool里每个对象的slice大小，因为改小了的话，下一个包可能不够用
-			fBuf.len = length + header.IPv4MinimumSize + header.TCPMinimumSize
-			//在这里包装成IP包 入队列直接是IP包
-			fPacket := FPacket{
-				srcIP:   net.IP{10, 1, 1, 2}.To4(),
-				dstIP:   peerIP.To4(),
-				srcPort: uint16(srcPort),
-				dstPort: uint16(peerPort),
-				syn:     false,
-				ack:     true,
-				seqNum:  mSerSeq + uint32(length),
-				ackNum:  lastRecPacket.seqNum + uint32(len(lastRecPacket.payload)),
-			}
-			craftPacket(fBuf.data[:fBuf.len], &fPacket)
+		result := make([]*FBuffer, mSegCount+mFecCount)
+		for i := range result {
+			result[i] = poolGet()
+		}
 
-			_, err := mServerQueue.Push(fBuf)
+		fec.encode(readBuf[0:], length, &fPacket, result)
 
+		for _, subBuf := range result {
+			_, err := mServerQueue.Push(subBuf)
 			if err != nil {
 				serverDrop++
 				println("server drop packet ", serverDrop)
-				poolPut(fBuf)
 			}
+		}
+	}
+}
+
+func serverSocketToQueueNoFEC(serverSendto string, srcPort int) {
+	fmt.Println("server socket to queue")
+
+	udpAddr, err := net.ResolveUDPAddr("udp4", serverSendto)
+	checkError(err)
+	conn, err := net.DialUDP("udp", nil, udpAddr)
+	checkError(err)
+	serverConn = conn
+
+	for {
+		fBuf := poolGet()
+		length, _ := serverConn.Read(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
+		//这里不能改变pool里每个对象的slice大小，因为改小了的话，下一个包可能不够用
+		fBuf.len = length + header.IPv4MinimumSize + header.TCPMinimumSize
+		//在这里包装成IP包 入队列直接是IP包
+		fPacket := FPacket{
+			srcIP:   net.IP{10, 1, 1, 2}.To4(),
+			dstIP:   peerIP.To4(),
+			srcPort: uint16(srcPort),
+			dstPort: uint16(peerPort),
+			syn:     false,
+			ack:     true,
+			seqNum:  mSerSeq + uint32(length),
+			ackNum:  lastRecPacket.seqNum + uint32(len(lastRecPacket.payload)),
+		}
+		craftPacket(fBuf.data[:fBuf.len], &fPacket)
+
+		_, err := mServerQueue.Put(fBuf)
+
+		if err != nil {
+			serverDrop++
+			println("server drop packet ", serverDrop)
+
+			if serverDrop > 1000000 {
+				serverDrop = 0
+			}
+			poolPut(fBuf)
 		}
 	}
 }
