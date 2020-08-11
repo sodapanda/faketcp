@@ -152,7 +152,7 @@ func clientSocketToQueue(socketListenPort string, serverIP string, serverPort in
 
 		craftPacket(packet, &fPacket)
 
-		_, err = mClientQueue.Put(fBuf)
+		_, err = mClientQueue.Push(fBuf)
 
 		if err != nil {
 			clientDrop++

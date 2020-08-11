@@ -27,6 +27,9 @@ import (
 
 func TestFec(t *testing.T) {
 	fmt.Println("test FEC")
+	eFec = true
+	mSegCount = 2
+	mFecCount = 1
 	fec := newFec(mSegCount, mFecCount)
 	data := make([]byte, fecInputStdLen)
 	for i := range data {
@@ -50,13 +53,18 @@ func TestFec(t *testing.T) {
 	}
 
 	fecRcv := newRecvCache(5)
-	fec.encode(data, 7, &fPacket, result)
-	for i, v := range result {
+	fec.encode(data, 18, &fPacket, result)
+	fmt.Println("encode:")
+	for _, v := range result {
 		pData := v.data[:v.len]
-		// fmt.Println("len ", len(pData))
-		// fmt.Println(hex.Dump(pData))
+		fmt.Println("part Data")
+		fmt.Println(hex.Dump(pData))
+	}
 
-		if i != 1 {
+	fmt.Println("decode:")
+	for i, fBuf := range result {
+		pData := fBuf.data[:fBuf.len]
+		if i != len(result)-1 {
 			doRcv(pData, fec, fecRcv)
 		}
 	}
@@ -74,26 +82,4 @@ func doRcv(packet []byte, fec *rsFec, fecRcv *fecRecvCache) {
 	} else {
 		fmt.Println("not done")
 	}
-}
-
-func TestDivid(t *testing.T) {
-	data := make([]int, 20)
-	for i := range data {
-		data[i] = i
-	}
-	seg := 4
-	rec := 2
-	segSize := len(data) / seg
-	rst := make([][]int, seg+rec)
-
-	for i := 0; i < seg; i++ {
-		start := i * segSize
-		end := start + segSize
-		rst[i] = data[start:end]
-	}
-	for i := 0; i < rec; i++ {
-		rst[seg+i] = make([]int, segSize)
-	}
-	fmt.Println(data)
-	fmt.Println(rst)
 }

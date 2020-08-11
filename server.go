@@ -159,15 +159,11 @@ func serverSocketToQueueNoFEC(serverSendto string, srcPort int) {
 		}
 		craftPacket(fBuf.data[:fBuf.len], &fPacket)
 
-		_, err = mServerQueue.Put(fBuf)
+		_, err = mServerQueue.Push(fBuf)
 
 		if err != nil {
 			serverDrop++
 			println("server drop packet ", serverDrop)
-
-			if serverDrop > 1000000 {
-				serverDrop = 0
-			}
 			poolPut(fBuf)
 		}
 	}

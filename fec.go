@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	fecInputStdLen = 1400
+	fecInputStdLen = 1432
 )
 
 type rsFec struct {
