@@ -162,6 +162,57 @@ func clientSocketToQueue(socketListenPort string, serverIP string, serverPort in
 	}
 }
 
+func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort int) {
+	udpAddr, err := net.ResolveUDPAddr("udp4", ":"+socketListenPort)
+	conn, err := net.ListenUDP("udp", udpAddr)
+	checkError(err)
+	fmt.Printf("client listen socket with FEC %s\n", udpAddr)
+	clientConn = conn
+	dstIP := net.ParseIP(serverIP).To4()
+	srcIP := net.IP{10, 1, 1, 2}.To4()
+
+	fec := newFec(mSegCount, mFecCount)
+	readBuf := make([]byte, fecInputStdLen)
+
+	for {
+		length, cAddr, err := conn.ReadFromUDP(readBuf[0:])
+		checkError(err)
+		clientAddr = cAddr
+
+		fPacket := FPacket{}
+		fPacket.srcIP = srcIP
+		fPacket.dstIP = dstIP
+		fPacket.srcPort = 8888
+		fPacket.dstPort = uint16(serverPort)
+		fPacket.seqNum = cLastRecPacket.ackNum
+		if cLastRecPacket.syn {
+			// syn 也算一个
+			fPacket.ackNum = cLastRecPacket.seqNum + 1
+		} else {
+			fPacket.ackNum = cLastRecPacket.seqNum + uint32(len(cLastRecPacket.payload))
+		}
+
+		fPacket.syn = false
+		fPacket.ack = true
+
+		result := make([]*FBuffer, mSegCount+mFecCount)
+		for i := range result {
+			result[i] = poolGet()
+		}
+
+		fec.encode(readBuf[0:], length, &fPacket, result)
+
+		for _, subBuf := range result {
+			_, err = mClientQueue.Push(subBuf)
+
+			if err != nil {
+				clientDrop++
+				fmt.Println("client drop packet ", clientDrop)
+			}
+		}
+	}
+}
+
 func clientQueueToTun(tun *water.Interface) {
 	fmt.Println("client queue to tun")
 	for {

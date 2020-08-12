@@ -63,7 +63,12 @@ func main() {
 	if *isServer {
 		serverHandShake(tun)
 		//接收
-		go serverTunToSocket(tun)
+		if eFec {
+			go serverTunToSocketFEC(tun)
+		} else {
+			go serverTunToSocket(tun)
+		}
+		//发送
 		if eFec {
 			go serverSocketToQueueFEC(serverSocketTo, serverTunSrcPort)
 		} else {
@@ -81,7 +86,11 @@ func main() {
 			go clientTunToSocketNoFEC(tun)
 		}
 		//发送
-		go clientSocketToQueue(clientSocketListenPort, clientTunDstIP, clientTunDstPort)
+		if eFec {
+			go clientSocketToQueueFEC(clientSocketListenPort, clientTunDstIP, clientTunDstPort)
+		} else {
+			go clientSocketToQueue(clientSocketListenPort, clientTunDstIP, clientTunDstPort)
+		}
 		go clientQueueToTun(tun)
 	}
 	reader := bufio.NewReader(os.Stdin)

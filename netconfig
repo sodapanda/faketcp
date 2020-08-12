@@ -1,2 +1,4 @@
 sysctl -p
+sudo ip route add 120.240.47.66/32 via 192.168.8.1 dev eno1
+sudo ip route add 10.200.201.0/24 via 192.168.8.1 dev eno1
 iptables -t nat -A POSTROUTING -s 10.1.1.2 -p tcp -o eno1 -j SNAT --to-source 192.168.8.39:8888

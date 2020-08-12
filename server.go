@@ -91,6 +91,33 @@ func serverTunToSocket(tun *water.Interface) {
 	}
 }
 
+func serverTunToSocketFEC(tun *water.Interface) {
+	fmt.Println("server tun to socket FEC")
+
+	buffer := make([]byte, 2000)
+	fecRcv = newRecvCache(1000)
+	fec := newFec(mSegCount, mFecCount)
+
+	for {
+		len, err := tun.Read(buffer)
+		checkError(err)
+		data := buffer[:len]
+
+		subPkt := new(subPacket)
+		unPackSub(data[40:], subPkt)
+		result := poolGet()
+		done := fecRcv.append(subPkt, fec, result)
+		if done {
+			_, err = serverConn.Write(result.data[:result.len])
+		} else {
+			poolPut(result)
+		}
+
+		serverReceiveCount++
+		checkError(err)
+	}
+}
+
 func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 	fmt.Println("server socket to queue with FEC")
 	udpAddr, err := net.ResolveUDPAddr("udp4", serverSendto)
