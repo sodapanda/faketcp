@@ -172,7 +172,7 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 	srcIP := net.IP{10, 1, 1, 2}.To4()
 
 	fec := newFec(mSegCount, mFecCount)
-	readBuf := make([]byte, fecInputStdLen)
+	readBuf := make([]byte, 2000)
 
 	for {
 		length, cAddr, err := conn.ReadFromUDP(readBuf[0:])
@@ -200,7 +200,9 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 			result[i] = poolGet()
 		}
 
-		fec.encode(readBuf[0:], length, &fPacket, result)
+		alignSize := minAlignSize(length, mSegCount)
+
+		fec.encode(readBuf[:alignSize], length, &fPacket, result)
 
 		for _, subBuf := range result {
 			_, err = mClientQueue.Push(subBuf)

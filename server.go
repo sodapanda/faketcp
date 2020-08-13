@@ -126,7 +126,7 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 	checkError(err)
 	serverConn = conn
 	fec := newFec(mSegCount, mFecCount)
-	readBuf := make([]byte, fecInputStdLen)
+	readBuf := make([]byte, 2000)
 
 	for {
 		length, _ := serverConn.Read(readBuf[0:])
@@ -146,7 +146,9 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 			result[i] = poolGet()
 		}
 
-		fec.encode(readBuf[0:], length, &fPacket, result)
+		alignSize := minAlignSize(length, mSegCount)
+
+		fec.encode(readBuf[:alignSize], length, &fPacket, result)
 
 		for _, subBuf := range result {
 			_, err := mServerQueue.Push(subBuf)

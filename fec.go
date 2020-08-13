@@ -10,10 +10,6 @@ import (
 	"github.com/klauspost/reedsolomon"
 )
 
-const (
-	fecInputStdLen = 1432
-)
-
 type rsFec struct {
 	encoder reedsolomon.Encoder
 }
@@ -36,7 +32,7 @@ func newFec(dataCount int, rsCount int) *rsFec {
 
 //上层包传入时长度已经对其到标准长度，上层包的真实长度传入，打包tcp的参数,返回的结果是FBuffer的list
 func (fec *rsFec) encode(parentPkt []byte, parentLen int, fPacket *FPacket, result []*FBuffer) {
-	subPktLen := fecInputStdLen / mSegCount
+	subPktLen := len(parentPkt) / mSegCount
 	calcBuf := make([][]byte, mSegCount+mFecCount)
 	//把传入的标准长度包切割成相等大小
 	for i := 0; i < mSegCount; i++ {
@@ -95,7 +91,7 @@ func unPackSub(data []byte, result *subPacket) {
 	result.indexInRS = rs
 	result.parentLength = pLen
 	result.data = &FBuffer{}
-	result.data.data = make([]byte, fecInputStdLen)
+	result.data.data = make([]byte, 2000)
 	result.data.len = len(payLoad)
 	copy(result.data.data, payLoad)
 }

@@ -30,8 +30,10 @@ func TestFec(t *testing.T) {
 	eFec = true
 	mSegCount = 2
 	mFecCount = 1
+	var paySize = 53
 	fec := newFec(mSegCount, mFecCount)
-	data := make([]byte, fecInputStdLen)
+	data := make([]byte, 2000)
+	alignSize := minAlignSize(paySize, mSegCount)
 	for i := range data {
 		data[i] = byte(i)
 	}
@@ -53,7 +55,7 @@ func TestFec(t *testing.T) {
 	}
 
 	fecRcv := newRecvCache(5)
-	fec.encode(data, 18, &fPacket, result)
+	fec.encode(data[:alignSize], paySize, &fPacket, result)
 	fmt.Println("encode:")
 	for _, v := range result {
 		pData := v.data[:v.len]
@@ -82,4 +84,9 @@ func doRcv(packet []byte, fec *rsFec, fecRcv *fecRecvCache) {
 	} else {
 		fmt.Println("not done")
 	}
+}
+
+func TestRound(t *testing.T) {
+	len := minAlignSize(1330, 4)
+	fmt.Println(len)
 }
