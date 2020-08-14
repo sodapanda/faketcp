@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"net"
+	"time"
 
 	"github.com/google/netstack/tcpip/header"
 	"github.com/songgao/water"
@@ -77,7 +79,7 @@ var fecRcv *fecRecvCache
 func clientTunToSocketFEC(tun *water.Interface) {
 	fmt.Println("client tun to socket with FEC")
 	buffer := make([]byte, 2000)
-	fecRcv = newRecvCache(1000)
+	fecRcv = newRecvCache(100000)
 	fec := newFec(mSegCount, mFecCount)
 
 	for {
@@ -174,6 +176,9 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 	fec := newFec(mSegCount, mFecCount)
 	readBuf := make([]byte, 2000)
 
+	gapF := float64(mGap) / float64(mSegCount+mFecCount)
+	gap := int(math.Ceil(gapF))
+
 	for {
 		length, cAddr, err := conn.ReadFromUDP(readBuf[0:])
 		checkError(err)
@@ -204,14 +209,28 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 
 		fec.encode(readBuf[:alignSize], length, &fPacket, result)
 
-		for _, subBuf := range result {
-			_, err = mClientQueue.Push(subBuf)
-
-			if err != nil {
-				clientDrop++
-				fmt.Println("client drop packet ", clientDrop)
+		if mGap > 0 {
+			for i := range result {
+				timer := time.NewTimer(time.Duration(gap*i) * time.Millisecond)
+				go func(index int) {
+					<-timer.C
+					_, err := mClientQueue.Push(result[index])
+					if err != nil {
+						clientDrop++
+						println("client drop packet ", clientDrop)
+					}
+				}(i)
+			}
+		} else {
+			for i := range result {
+				_, err := mClientQueue.Push(result[i])
+				if err != nil {
+					clientDrop++
+					println("client drop packet ", clientDrop)
+				}
 			}
 		}
+
 	}
 }
 

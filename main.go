@@ -25,6 +25,8 @@ var queueLen = 600
 var eFec = false
 var mSegCount = 1
 var mFecCount = 1
+var mGap = 0
+var mReport = false
 
 var serverTunSrcPort = clientTunDstPort
 var serverTunSrcIP = "10.1.1.2"
@@ -43,6 +45,8 @@ func main() {
 	fEFec := flag.Bool("fec", false, "server and client,enable fec")
 	fSegCount := flag.Int("seg", 1, "one packet segment into")
 	fFecCount := flag.Int("fseg", 1, "fec segment count")
+	fFecGap := flag.Int("gap", 0, "fec packet send time gap")
+	fReport := flag.Bool("re", false, "get report")
 	flag.Parse()
 
 	clientTunDstIP = *fClientTunDstIP
@@ -52,6 +56,8 @@ func main() {
 	eFec = *fEFec
 	mSegCount = *fSegCount
 	mFecCount = *fFecCount
+	mGap = *fFecGap
+	mReport = *fReport
 
 	tun := createTUN("faketcp")
 
@@ -105,9 +111,9 @@ func main() {
 		fmt.Println("client send count ", clientSendCount)
 		fmt.Println("client receive count ", clientReceiveCount)
 		fmt.Println("client reconstruct ", decodeCount)
-		// if eFec {
-		// 	fecRcv.dump()
-		// }
+	}
+	if mReport {
+		fecRcv.dump()
 	}
 }
 

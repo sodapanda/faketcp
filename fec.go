@@ -167,5 +167,16 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 }
 
 func (fc *fecRecvCache) dump() {
-	fmt.Println("place holder")
+	fc.linkMap.Each(func(k interface{}, v interface{}) {
+		fmt.Printf("%d ", k)
+		subPkts := v.([]*subPacket)
+		for i := range subPkts {
+			if subPkts[i] == nil {
+				fmt.Printf("口")
+			} else {
+				fmt.Print("困")
+			}
+		}
+		fmt.Println("")
+	})
 }

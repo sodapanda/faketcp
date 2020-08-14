@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"os"
+	"time"
 
 	"github.com/google/netstack/tcpip/header"
 	"github.com/songgao/water"
@@ -95,7 +97,7 @@ func serverTunToSocketFEC(tun *water.Interface) {
 	fmt.Println("server tun to socket FEC")
 
 	buffer := make([]byte, 2000)
-	fecRcv = newRecvCache(1000)
+	fecRcv = newRecvCache(100000)
 	fec := newFec(mSegCount, mFecCount)
 
 	for {
@@ -127,6 +129,8 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 	serverConn = conn
 	fec := newFec(mSegCount, mFecCount)
 	readBuf := make([]byte, 2000)
+	gapF := float64(mGap) / float64(mSegCount+mFecCount)
+	gap := int(math.Ceil(gapF))
 
 	for {
 		length, _ := serverConn.Read(readBuf[0:])
@@ -150,11 +154,25 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 
 		fec.encode(readBuf[:alignSize], length, &fPacket, result)
 
-		for _, subBuf := range result {
-			_, err := mServerQueue.Push(subBuf)
-			if err != nil {
-				serverDrop++
-				println("server drop packet ", serverDrop)
+		if mGap > 0 {
+			for i := range result {
+				timer := time.NewTimer(time.Duration(gap*i) * time.Millisecond)
+				go func(index int) {
+					<-timer.C
+					_, err := mServerQueue.Push(result[index])
+					if err != nil {
+						serverDrop++
+						println("server drop packet ", serverDrop)
+					}
+				}(i)
+			}
+		} else {
+			for i := range result {
+				_, err := mServerQueue.Push(result[i])
+				if err != nil {
+					serverDrop++
+					println("server drop packet ", serverDrop)
+				}
 			}
 		}
 	}
