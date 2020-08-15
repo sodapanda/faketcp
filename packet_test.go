@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"testing"
+
+	"github.com/emirpasic/gods/maps/linkedhashmap"
 )
 
 // func TestPacket(t *testing.T) {
@@ -86,7 +88,12 @@ func doRcv(packet []byte, fec *rsFec, fecRcv *fecRecvCache) {
 	}
 }
 
-func TestRound(t *testing.T) {
-	len := minAlignSize(1330, 4)
-	fmt.Println(len)
+func TestLink(t *testing.T) {
+	linkMap := linkedhashmap.New()
+	linkMap.Put("1", "a")
+	linkMap.Put("2", "b")
+	fmt.Println(linkMap)
+
+	keys := linkMap.Keys()
+	fmt.Println("key ", keys[0])
 }

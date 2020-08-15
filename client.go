@@ -79,7 +79,7 @@ var fecRcv *fecRecvCache
 func clientTunToSocketFEC(tun *water.Interface) {
 	fmt.Println("client tun to socket with FEC")
 	buffer := make([]byte, 2000)
-	fecRcv = newRecvCache(100000)
+	fecRcv = newRecvCache(fecCacheSize)
 	fec := newFec(mSegCount, mFecCount)
 
 	for {
@@ -201,15 +201,18 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 		fPacket.ack = true
 
 		result := make([]*FBuffer, mSegCount+mFecCount)
+		if length <= 200 && disableSmallFEC {
+			result = make([]*FBuffer, 2)
+		}
 		for i := range result {
 			result[i] = poolGet()
 		}
 
-		if length > 200 {
+		if length <= 200 && disableSmallFEC {
+			fec.encodeSmallPkt(readBuf[:length], &fPacket, result)
+		} else {
 			alignSize := minAlignSize(length, mSegCount)
 			fec.encode(readBuf[:alignSize], length, &fPacket, result)
-		} else {
-			fec.encodeSmallPkt(readBuf[:length], &fPacket, result)
 		}
 
 		if mGap > 0 {

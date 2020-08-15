@@ -97,7 +97,7 @@ func serverTunToSocketFEC(tun *water.Interface) {
 	fmt.Println("server tun to socket FEC")
 
 	buffer := make([]byte, 2000)
-	fecRcv = newRecvCache(100000)
+	fecRcv = newRecvCache(fecCacheSize)
 	fec := newFec(mSegCount, mFecCount)
 
 	for {

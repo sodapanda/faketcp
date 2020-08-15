@@ -66,7 +66,7 @@ func (fec *rsFec) encode(parentPkt []byte, parentLen int, fPacket *FPacket, resu
 //小数据不用fec直接复制 长度不用限制成标准长度
 func (fec *rsFec) encodeSmallPkt(parentPkt []byte, fPacket *FPacket, result []*FBuffer) {
 	parentID := uint64(time.Now().UnixNano())
-	for i := 0; i < mSegCount+mFecCount; i++ {
+	for i := 0; i < 2; i++ {
 		subPkt := new(subPacket)
 		subPkt.parentID = parentID
 		subPkt.indexInRS = uint16(i) //没必要
@@ -218,9 +218,8 @@ func (fc *fecRecvCache) appendSmall(subPkt *subPacket, result *FBuffer) bool {
 	poolPut(subPkt.data)
 	if gotCount == 1 {
 		return true
-	} else {
-		return false
 	}
+	return false
 }
 
 func (fc *fecRecvCache) dump() {
@@ -229,9 +228,9 @@ func (fc *fecRecvCache) dump() {
 		subPkts := v.([]*subPacket)
 		for i := range subPkts {
 			if subPkts[i] == nil {
-				fmt.Printf("口")
+				fmt.Printf("❌")
 			} else {
-				fmt.Print("困")
+				fmt.Print("✅")
 			}
 		}
 		fmt.Println("")
