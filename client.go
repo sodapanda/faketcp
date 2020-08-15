@@ -205,9 +205,12 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 			result[i] = poolGet()
 		}
 
-		alignSize := minAlignSize(length, mSegCount)
-
-		fec.encode(readBuf[:alignSize], length, &fPacket, result)
+		if length > 200 {
+			alignSize := minAlignSize(length, mSegCount)
+			fec.encode(readBuf[:alignSize], length, &fPacket, result)
+		} else {
+			fec.encodeSmallPkt(readBuf[:length], &fPacket, result)
+		}
 
 		if mGap > 0 {
 			for i := range result {

@@ -108,11 +108,21 @@ func serverTunToSocketFEC(tun *water.Interface) {
 		subPkt := new(subPacket)
 		unPackSub(data[40:], subPkt)
 		result := poolGet()
-		done := fecRcv.append(subPkt, fec, result)
-		if done {
-			_, err = serverConn.Write(result.data[:result.len])
+
+		if subPkt.dataType == 1 {
+			done := fecRcv.append(subPkt, fec, result)
+			if done {
+				_, err = serverConn.Write(result.data[:result.len])
+			} else {
+				poolPut(result)
+			}
 		} else {
-			poolPut(result)
+			done := fecRcv.appendSmall(subPkt, result)
+			if done {
+				_, err = serverConn.Write(result.data[:result.len])
+			} else {
+				poolPut(result)
+			}
 		}
 
 		serverReceiveCount++
