@@ -31,7 +31,7 @@ var mReport = false
 var serverTunSrcPort = clientTunDstPort
 var serverTunSrcIP = "10.1.1.2"
 var serverSocketTo = "127.0.0.1:21007"
-var fecCacheSize = 10000
+var fecCacheSize = 5000
 var disableSmallFEC = false
 
 //todo 发送延迟和接收延迟分别定义
@@ -50,6 +50,7 @@ func main() {
 	fFecGap := flag.Int("gap", 0, "fec packet send time gap")
 	fReport := flag.Bool("re", false, "get report")
 	fDisableSmallFEC := flag.Bool("dsf", false, "disable small fec")
+	fCacheSize := flag.Int("fcs", 5000, "fec list cache size")
 	flag.Parse()
 
 	clientTunDstIP = *fClientTunDstIP
@@ -62,6 +63,7 @@ func main() {
 	mGap = *fFecGap
 	mReport = *fReport
 	disableSmallFEC = *fDisableSmallFEC
+	fecCacheSize = *fCacheSize
 
 	tun := createTUN("faketcp")
 

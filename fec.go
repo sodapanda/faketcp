@@ -1,11 +1,11 @@
 package main
 
 import (
+	"container/list"
 	"encoding/binary"
 	"fmt"
 	"time"
 
-	"github.com/emirpasic/gods/maps/linkedhashmap"
 	"github.com/google/netstack/tcpip/header"
 	"github.com/klauspost/reedsolomon"
 )
@@ -119,40 +119,47 @@ func unPackSub(data []byte, result *subPacket) {
 }
 
 type fecRecvCache struct {
-	linkMap *linkedhashmap.Map
+	linkMap map[uint64][]*subPacket
+	keyList *list.List
 	capLen  int
 }
 
 func newRecvCache(size int) *fecRecvCache {
 	cache := new(fecRecvCache)
-	cache.linkMap = linkedhashmap.New()
+	cache.linkMap = make(map[uint64][]*subPacket)
+	cache.keyList = list.New()
 	cache.capLen = size
 
 	return cache
 }
 
 var decodeCount int
+var startRmvKey uint64
 
 func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) bool {
 	//看看key是否存在，不存在的话创建，并且把[][]byte造好，为了等下解码
 	//放进去看看够不够2个，够了看看是不是两个原始包，是的话直接合并，不是的话解码合并
-	_, found := fc.linkMap.Get(subPkt.parentID)
+	_, found := fc.linkMap[subPkt.parentID]
 	if !found {
-		fc.linkMap.Put(subPkt.parentID, make([]*subPacket, mSegCount+mFecCount))
+		fc.linkMap[subPkt.parentID] = make([]*subPacket, mSegCount+mFecCount)
+		fc.keyList.PushBack(subPkt.parentID)
 	}
 
-	if fc.linkMap.Size() > fc.capLen {
-		firstKey := fc.linkMap.Keys()[0]
-		fc.linkMap.Remove(firstKey)
+	if len(fc.linkMap) >= fc.capLen {
+		firstKeyElm := fc.keyList.Front()
+		if startRmvKey == 0 {
+			startRmvKey = firstKeyElm.Value.(uint64)
+		}
+		delete(fc.linkMap, firstKeyElm.Value.(uint64))
+		fc.keyList.Remove(firstKeyElm)
 	}
 
-	group, _ := fc.linkMap.Get(subPkt.parentID)
-	groupS := group.([]*subPacket)
-	groupS[subPkt.indexInRS] = subPkt
+	group, _ := fc.linkMap[subPkt.parentID]
+	group[subPkt.indexInRS] = subPkt
 
 	gotCount := 0
 
-	for _, v := range groupS {
+	for _, v := range group {
 		if v != nil {
 			gotCount++
 		}
@@ -161,7 +168,7 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 	if gotCount == mSegCount {
 		tmp := make([][]byte, mSegCount+mFecCount)
 
-		for i, subP := range groupS {
+		for i, subP := range group {
 			if subP == nil {
 				tmp[i] = nil
 			} else {
@@ -177,7 +184,7 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 		}
 
 		result.len = int(subPkt.parentLength)
-		for _, subP := range groupS {
+		for _, subP := range group {
 			if subP != nil {
 				poolPut(subP.data)
 			}
@@ -189,43 +196,43 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 }
 
 func (fc *fecRecvCache) appendSmall(subPkt *subPacket, result *FBuffer) bool {
-	_, found := fc.linkMap.Get(subPkt.parentID)
-	if !found {
-		fc.linkMap.Put(subPkt.parentID, make([]*subPacket, mSegCount+mFecCount))
-	}
+	// _, found := fc.linkMap[subPkt.parentID]
+	// if !found {
+	// 	fc.linkMap[subPkt.parentID]= make([]*subPacket, mSegCount+mFecCount)
+	// }
 
-	if fc.linkMap.Size() > fc.capLen {
-		firstKey := fc.linkMap.Keys()[0]
-		fc.linkMap.Remove(firstKey)
-	}
+	// if len(fc.linkMap) > fc.capLen {
+	// 	firstKey := fc.linkMap.Keys()[0]
+	// 	fc.linkMap.Remove(firstKey)
+	// }
 
-	group, _ := fc.linkMap.Get(subPkt.parentID)
-	groupS := group.([]*subPacket)
-	groupS[subPkt.indexInRS] = subPkt
+	// group, _ := fc.linkMap.Get(subPkt.parentID)
+	// groupS := group.([]*subPacket)
+	// groupS[subPkt.indexInRS] = subPkt
 
-	gotCount := 0
+	// gotCount := 0
 
-	for _, v := range groupS {
-		if v != nil {
-			gotCount++
-		}
-	}
+	// for _, v := range groupS {
+	// 	if v != nil {
+	// 		gotCount++
+	// 	}
+	// }
 
-	if gotCount == 1 {
-		copy(result.data, subPkt.data.data[:subPkt.data.len])
-	}
-	result.len = int(subPkt.parentLength)
-	poolPut(subPkt.data)
-	if gotCount == 1 {
-		return true
-	}
+	// if gotCount == 1 {
+	// 	copy(result.data, subPkt.data.data[:subPkt.data.len])
+	// }
+	// result.len = int(subPkt.parentLength)
+	// poolPut(subPkt.data)
+	// if gotCount == 1 {
+	// 	return true
+	// }
+	// return false
 	return false
 }
 
 func (fc *fecRecvCache) dump() {
-	fc.linkMap.Each(func(k interface{}, v interface{}) {
-		fmt.Printf("%d ", k)
-		subPkts := v.([]*subPacket)
+	for e := fc.keyList.Front(); e != nil; e = e.Next() {
+		subPkts := fc.linkMap[e.Value.(uint64)]
 		for i := range subPkts {
 			if subPkts[i] == nil {
 				fmt.Printf("❌")
@@ -234,5 +241,6 @@ func (fc *fecRecvCache) dump() {
 			}
 		}
 		fmt.Println("")
-	})
+	}
+	fmt.Println("start remove at ", startRmvKey)
 }

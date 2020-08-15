@@ -169,7 +169,7 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 				timer := time.NewTimer(time.Duration(gap*i) * time.Millisecond)
 				go func(index int) {
 					<-timer.C
-					_, err := mServerQueue.Push(result[index])
+					_, err := mServerQueue.Put(result[index])
 					if err != nil {
 						serverDrop++
 						println("server drop packet ", serverDrop)
@@ -178,7 +178,7 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 			}
 		} else {
 			for i := range result {
-				_, err := mServerQueue.Push(result[i])
+				_, err := mServerQueue.Put(result[i])
 				if err != nil {
 					serverDrop++
 					println("server drop packet ", serverDrop)
@@ -216,7 +216,7 @@ func serverSocketToQueueNoFEC(serverSendto string, srcPort int) {
 		}
 		craftPacket(fBuf.data[:fBuf.len], &fPacket)
 
-		_, err = mServerQueue.Push(fBuf)
+		_, err = mServerQueue.Put(fBuf)
 
 		if err != nil {
 			serverDrop++

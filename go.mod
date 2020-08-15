@@ -3,7 +3,6 @@ module github.com/sodapanda/faketcp
 go 1.14
 
 require (
-	github.com/emirpasic/gods v1.12.0
 	github.com/google/btree v1.0.0 // indirect
 	github.com/google/netstack v0.0.0-20191123085552-55fcc16cd0eb
 	github.com/klauspost/reedsolomon v1.9.9
