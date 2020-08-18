@@ -23,8 +23,10 @@ var clientTunSrcIP = "10.1.1.2"
 var clientTunSrcPort = 8888
 var queueLen = 600
 var eFec = false
-var mSegCount = 1
-var mFecCount = 1
+var mServerSegCount = 1
+var mServerFecCount = 1
+var mClientSegCount = 1
+var mClientFecCount = 1
 var mGap = 0
 var mReport = false
 
@@ -33,6 +35,8 @@ var serverTunSrcIP = "10.1.1.2"
 var serverSocketTo = "127.0.0.1:21007"
 var fecCacheSize = 5000
 var disableSmallFEC = false
+
+var mFecRcv *fecRecvCache
 
 //todo 发送延迟和接收延迟分别定义
 
@@ -45,8 +49,10 @@ func main() {
 	fClientTunDstPort := flag.Int("dport", 0, "client set, server port")
 	fQueueLen := flag.Int("qlen", 0, "queue len")
 	fEFec := flag.Bool("fec", false, "server and client,enable fec")
-	fSegCount := flag.Int("seg", 1, "one packet segment into")
-	fFecCount := flag.Int("fseg", 1, "fec segment count")
+	fSegCount := flag.Int("sseg", 1, "server one packet segment into")
+	fFecCount := flag.Int("sfseg", 1, "server fec segment count")
+	fCSegCount := flag.Int("cseg", 1, "client one packet segment into")
+	fCFecCount := flag.Int("cfseg", 1, "client fec segment count")
 	fFecGap := flag.Int("gap", 0, "fec packet send time gap")
 	fReport := flag.Bool("re", false, "get report")
 	fDisableSmallFEC := flag.Bool("dsf", false, "disable small fec")
@@ -58,8 +64,10 @@ func main() {
 	serverTunSrcPort = clientTunDstPort
 	queueLen = *fQueueLen
 	eFec = *fEFec
-	mSegCount = *fSegCount
-	mFecCount = *fFecCount
+	mServerSegCount = *fSegCount
+	mServerFecCount = *fFecCount
+	mClientSegCount = *fCSegCount
+	mClientFecCount = *fCFecCount
 	mGap = *fFecGap
 	mReport = *fReport
 	disableSmallFEC = *fDisableSmallFEC
@@ -119,7 +127,7 @@ func main() {
 		fmt.Println("client reconstruct ", decodeCount)
 	}
 	if mReport {
-		fecRcv.dump()
+		mFecRcv.dump()
 	}
 }
 

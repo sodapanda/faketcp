@@ -32,18 +32,18 @@ func newFec(dataCount int, rsCount int) *rsFec {
 }
 
 //上层包传入时长度已经对其到标准长度，上层包的真实长度传入，打包tcp的参数,返回的结果是FBuffer的list
-func (fec *rsFec) encode(parentPkt []byte, parentLen int, fPacket *FPacket, result []*FBuffer) {
-	subPktLen := len(parentPkt) / mSegCount
-	calcBuf := make([][]byte, mSegCount+mFecCount)
+func (fec *rsFec) encode(parentPkt []byte, parentLen int, segCount int, fecCount int, fPacket *FPacket, result []*FBuffer) {
+	subPktLen := len(parentPkt) / segCount
+	calcBuf := make([][]byte, segCount+fecCount)
 	//把传入的标准长度包切割成相等大小
-	for i := 0; i < mSegCount; i++ {
+	for i := 0; i < segCount; i++ {
 		start := i * subPktLen
 		end := start + subPktLen
 		calcBuf[i] = parentPkt[start:end]
 	}
 	//给fec包分配空间
-	for i := 0; i < mFecCount; i++ {
-		calcBuf[mSegCount+i] = make([]byte, subPktLen)
+	for i := 0; i < fecCount; i++ {
+		calcBuf[segCount+i] = make([]byte, subPktLen)
 	}
 
 	fec.encoder.Encode(calcBuf)
@@ -136,12 +136,12 @@ func newRecvCache(size int) *fecRecvCache {
 var decodeCount int
 var startRmvKey uint64
 
-func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) bool {
+func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, segCount int, fecCount int, result *FBuffer) bool {
 	//看看key是否存在，不存在的话创建，并且把[][]byte造好，为了等下解码
 	//放进去看看够不够2个，够了看看是不是两个原始包，是的话直接合并，不是的话解码合并
 	_, found := fc.linkMap[subPkt.parentID]
 	if !found {
-		fc.linkMap[subPkt.parentID] = make([]*subPacket, mSegCount+mFecCount)
+		fc.linkMap[subPkt.parentID] = make([]*subPacket, segCount+fecCount)
 		fc.keyList.PushBack(subPkt.parentID)
 	}
 
@@ -165,8 +165,8 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 		}
 	}
 
-	if gotCount == mSegCount {
-		tmp := make([][]byte, mSegCount+mFecCount)
+	if gotCount == segCount {
+		tmp := make([][]byte, segCount+fecCount)
 
 		for i, subP := range group {
 			if subP == nil {
@@ -179,7 +179,7 @@ func (fc *fecRecvCache) append(subPkt *subPacket, fec *rsFec, result *FBuffer) b
 		fec.decode(tmp)
 		decodeCount++
 		//合并
-		for i, v := range tmp[:mSegCount] {
+		for i, v := range tmp[:segCount] {
 			copy(result.data[i*subPkt.data.len:], v)
 		}
 
@@ -231,16 +231,23 @@ func (fc *fecRecvCache) appendSmall(subPkt *subPacket, result *FBuffer) bool {
 }
 
 func (fc *fecRecvCache) dump() {
+	inCompleteCount := 0
 	for e := fc.keyList.Front(); e != nil; e = e.Next() {
 		subPkts := fc.linkMap[e.Value.(uint64)]
+		gotCount := 0
 		for i := range subPkts {
 			if subPkts[i] == nil {
 				fmt.Printf("❌")
 			} else {
+				gotCount++
 				fmt.Print("✅")
 			}
+		}
+		if gotCount < mClientSegCount {
+			inCompleteCount++
 		}
 		fmt.Println("")
 	}
 	fmt.Println("start remove at ", startRmvKey)
+	fmt.Println("incomplete count", inCompleteCount)
 }

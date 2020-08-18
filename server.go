@@ -97,8 +97,8 @@ func serverTunToSocketFEC(tun *water.Interface) {
 	fmt.Println("server tun to socket FEC")
 
 	buffer := make([]byte, 2000)
-	fecRcv = newRecvCache(fecCacheSize)
-	fec := newFec(mSegCount, mFecCount)
+	mFecRcv = newRecvCache(fecCacheSize)
+	fec := newFec(mClientSegCount, mClientFecCount)
 
 	for {
 		len, err := tun.Read(buffer)
@@ -110,14 +110,14 @@ func serverTunToSocketFEC(tun *water.Interface) {
 		result := poolGet()
 
 		if subPkt.dataType == 1 {
-			done := fecRcv.append(subPkt, fec, result)
+			done := mFecRcv.append(subPkt, fec, mClientSegCount, mClientFecCount, result)
 			if done {
 				_, err = serverConn.Write(result.data[:result.len])
 			} else {
 				poolPut(result)
 			}
 		} else {
-			done := fecRcv.appendSmall(subPkt, result)
+			done := mFecRcv.appendSmall(subPkt, result)
 			if done {
 				_, err = serverConn.Write(result.data[:result.len])
 			} else {
@@ -137,9 +137,9 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 	conn, err := net.DialUDP("udp", nil, udpAddr)
 	checkError(err)
 	serverConn = conn
-	fec := newFec(mSegCount, mFecCount)
+	fec := newFec(mServerSegCount, mServerFecCount)
 	readBuf := make([]byte, 2000)
-	gapF := float64(mGap) / float64(mSegCount+mFecCount)
+	gapF := float64(mGap) / float64(mServerSegCount+mServerFecCount)
 	gap := int(math.Ceil(gapF))
 
 	for {
@@ -155,14 +155,14 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 			ackNum:  lastRecPacket.seqNum + uint32(len(lastRecPacket.payload)),
 		}
 
-		result := make([]*FBuffer, mSegCount+mFecCount)
+		result := make([]*FBuffer, mServerSegCount+mServerFecCount)
 		for i := range result {
 			result[i] = poolGet()
 		}
 
-		alignSize := minAlignSize(length, mSegCount)
+		alignSize := minAlignSize(length, mServerSegCount)
 
-		fec.encode(readBuf[:alignSize], length, &fPacket, result)
+		fec.encode(readBuf[:alignSize], length, mServerSegCount, mServerFecCount, &fPacket, result)
 
 		if mGap > 0 {
 			for i := range result {

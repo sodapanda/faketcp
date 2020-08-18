@@ -74,13 +74,11 @@ func handShake(tun *water.Interface) {
 	fmt.Println("client send ack")
 }
 
-var fecRcv *fecRecvCache
-
 func clientTunToSocketFEC(tun *water.Interface) {
 	fmt.Println("client tun to socket with FEC")
 	buffer := make([]byte, 2000)
-	fecRcv = newRecvCache(fecCacheSize)
-	fec := newFec(mSegCount, mFecCount)
+	mFecRcv = newRecvCache(fecCacheSize)
+	fec := newFec(mServerSegCount, mServerFecCount)
 
 	for {
 		n, err := tun.Read(buffer)
@@ -90,7 +88,7 @@ func clientTunToSocketFEC(tun *water.Interface) {
 		subPkt := new(subPacket)
 		unPackSub(data[40:], subPkt)
 		result := poolGet()
-		done := fecRcv.append(subPkt, fec, result)
+		done := mFecRcv.append(subPkt, fec, mServerSegCount, mServerFecCount, result)
 		if done {
 			_, err = clientConn.WriteToUDP(result.data[:result.len], clientAddr)
 		} else {
@@ -173,10 +171,10 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 	dstIP := net.ParseIP(serverIP).To4()
 	srcIP := net.IP{10, 1, 1, 2}.To4()
 
-	fec := newFec(mSegCount, mFecCount)
+	fec := newFec(mClientSegCount, mClientFecCount)
 	readBuf := make([]byte, 2000)
 
-	gapF := float64(mGap) / float64(mSegCount+mFecCount)
+	gapF := float64(mGap) / float64(mClientSegCount+mClientFecCount)
 	gap := int(math.Ceil(gapF))
 
 	for {
@@ -200,7 +198,7 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 		fPacket.syn = false
 		fPacket.ack = true
 
-		result := make([]*FBuffer, mSegCount+mFecCount)
+		result := make([]*FBuffer, mClientSegCount+mClientFecCount)
 		if length <= 200 && disableSmallFEC {
 			result = make([]*FBuffer, 2)
 		}
@@ -211,8 +209,8 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 		if length <= 200 && disableSmallFEC {
 			fec.encodeSmallPkt(readBuf[:length], &fPacket, result)
 		} else {
-			alignSize := minAlignSize(length, mSegCount)
-			fec.encode(readBuf[:alignSize], length, &fPacket, result)
+			alignSize := minAlignSize(length, mClientSegCount)
+			fec.encode(readBuf[:alignSize], length, mClientSegCount, mClientFecCount, &fPacket, result)
 		}
 
 		if mGap > 0 {

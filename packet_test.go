@@ -28,17 +28,19 @@ import (
 func TestFec(t *testing.T) {
 	fmt.Println("test FEC")
 	eFec = true
-	mSegCount = 2
-	mFecCount = 1
+	mClientSegCount = 2
+	mClientFecCount = 1
+	mServerSegCount = 2
+	mServerFecCount = 1
 	var paySize = 53
-	fec := newFec(mSegCount, mFecCount)
+	fec := newFec(mClientSegCount, mClientFecCount)
 	data := make([]byte, 2000)
-	alignSize := minAlignSize(paySize, mSegCount)
+	alignSize := minAlignSize(paySize, mClientSegCount)
 	for i := range data {
 		data[i] = byte(i)
 	}
 
-	result := make([]*FBuffer, mSegCount+mFecCount)
+	result := make([]*FBuffer, mClientSegCount+mClientFecCount)
 	for i := range result {
 		result[i] = poolGet()
 	}
@@ -55,7 +57,7 @@ func TestFec(t *testing.T) {
 	}
 
 	fecRcv := newRecvCache(5)
-	fec.encode(data[:alignSize], paySize, &fPacket, result)
+	fec.encode(data[:alignSize], paySize, mClientSegCount, mClientFecCount, &fPacket, result)
 	fmt.Println("encode:")
 	for _, v := range result {
 		pData := v.data[:v.len]
@@ -77,7 +79,7 @@ func doRcv(packet []byte, fec *rsFec, fecRcv *fecRecvCache) {
 	unPackSub(packet[40:], subPkt)
 	fmt.Println("subPkt ", subPkt.indexInRS)
 	result := poolGet()
-	done := fecRcv.append(subPkt, fec, result)
+	done := fecRcv.append(subPkt, fec, mClientSegCount, mClientFecCount, result)
 	if done {
 		fmt.Println("done")
 		fmt.Println(hex.Dump(result.data[:result.len]))
