@@ -152,7 +152,7 @@ func clientSocketToQueue(socketListenPort string, serverIP string, serverPort in
 
 		craftPacket(packet, &fPacket)
 
-		_, err = mClientQueue.Put(fBuf)
+		_, err = mClientQueue.Push(fBuf)
 
 		if err != nil {
 			clientDrop++
@@ -218,7 +218,7 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 				timer := time.NewTimer(time.Duration(gap*i) * time.Millisecond)
 				go func(index int) {
 					<-timer.C
-					_, err := mClientQueue.Put(result[index])
+					_, err := mClientQueue.Push(result[index])
 					if err != nil {
 						clientDrop++
 						println("client drop packet ", clientDrop)
@@ -227,7 +227,7 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 			}
 		} else {
 			for i := range result {
-				_, err := mClientQueue.Put(result[i])
+				_, err := mClientQueue.Push(result[i])
 				if err != nil {
 					clientDrop++
 					println("client drop packet ", clientDrop)
