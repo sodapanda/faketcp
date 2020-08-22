@@ -98,6 +98,9 @@ func clientTunToSocketFEC(tun *water.Interface) {
 		}
 
 		for _, d := range decodeResult {
+			if d.len == 0 {
+				continue
+			}
 			_, err = clientConn.WriteToUDP(d.data[:d.len], clientAddr)
 		}
 

@@ -117,6 +117,9 @@ func serverTunToSocketFEC(tun *water.Interface) {
 		}
 
 		for _, d := range decodeResult {
+			if d.len == 0 {
+				continue
+			}
 			_, err = serverConn.Write(d.data[:d.len])
 		}
 		checkError(err)
