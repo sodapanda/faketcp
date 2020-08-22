@@ -176,6 +176,7 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 					if err != nil {
 						serverDrop++
 						println("server drop packet ", serverDrop)
+						poolPut(encodeResult[index])
 					}
 				}(i)
 			}
@@ -185,6 +186,7 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 				if err != nil {
 					serverDrop++
 					println("server drop packet ", serverDrop)
+					poolPut(encodeResult[i])
 				}
 			}
 		}
