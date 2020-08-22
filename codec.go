@@ -69,7 +69,7 @@ func (codec *fecCodec) encode(data []byte, realLength int, ipInfo *FPacket, resu
 	}
 
 	for _, data := range result {
-		craftPacket(data.data, ipInfo)
+		craftPacket(data.data[:data.len], ipInfo)
 	}
 }
 

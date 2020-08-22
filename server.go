@@ -95,37 +95,30 @@ func serverTunToSocket(tun *water.Interface) {
 
 func serverTunToSocketFEC(tun *water.Interface) {
 	fmt.Println("server tun to socket FEC")
-
 	buffer := make([]byte, 2000)
-	mFecRcv = newRecvCache(fecCacheSize)
-	fec := newFec(mClientSegCount, mClientFecCount)
+	decodeResult := make([]*FBuffer, mSegCount)
+	for i := range decodeResult {
+		decodeResult[i] = new(FBuffer)
+		decodeResult[i].data = make([]byte, 2000)
+	}
 
 	for {
 		len, err := tun.Read(buffer)
+		serverReceiveCount++
 		checkError(err)
 		data := buffer[:len]
 
-		subPkt := new(subPacket)
-		unPackSub(data[40:], subPkt)
-		result := poolGet()
+		rcvPkt := new(ftPacket)
+		rcvPkt.decode(data[40:])
 
-		if subPkt.dataType == 1 {
-			done := mFecRcv.append(subPkt, fec, mClientSegCount, mClientFecCount, result)
-			if done {
-				_, err = serverConn.Write(result.data[:result.len])
-			} else {
-				poolPut(result)
-			}
-		} else {
-			done := mFecRcv.appendSmall(subPkt, result)
-			if done {
-				_, err = serverConn.Write(result.data[:result.len])
-			} else {
-				poolPut(result)
-			}
+		done := mCodec.decode(rcvPkt, decodeResult)
+		if !done {
+			continue
 		}
 
-		serverReceiveCount++
+		for _, d := range decodeResult {
+			_, err = serverConn.Write(d.data[:d.len])
+		}
 		checkError(err)
 	}
 }
@@ -137,13 +130,30 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 	conn, err := net.DialUDP("udp", nil, udpAddr)
 	checkError(err)
 	serverConn = conn
-	fec := newFec(mServerSegCount, mServerFecCount)
 	readBuf := make([]byte, 2000)
-	gapF := float64(mGap) / float64(mServerSegCount+mServerFecCount)
+	gapF := float64(mGap) / float64(mSegCount+mFecCount)
 	gap := int(math.Ceil(gapF))
+	sb := newStageBuffer(mSegCount)
+	fullDataBuffer := make([]byte, 2000)
+	encodeResult := make([]*FBuffer, mSegCount+mFecCount)
 
 	for {
 		length, _ := serverConn.Read(readBuf[0:])
+
+		segFull := sb.append(readBuf[0:length], uint16(length))
+		if !segFull {
+			continue
+		}
+
+		realLen := sb.length()
+		alignSize := mCodec.align(realLen)
+		fullData := fullDataBuffer[0:alignSize]
+		sb.getFullData(fullData)
+
+		for i := range encodeResult {
+			encodeResult[i] = poolGet()
+		}
+
 		fPacket := FPacket{
 			srcIP:   net.IP{10, 1, 1, 2}.To4(),
 			dstIP:   peerIP.To4(),
@@ -155,21 +165,14 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 			ackNum:  lastRecPacket.seqNum + uint32(len(lastRecPacket.payload)),
 		}
 
-		result := make([]*FBuffer, mServerSegCount+mServerFecCount)
-		for i := range result {
-			result[i] = poolGet()
-		}
-
-		alignSize := minAlignSize(length, mServerSegCount)
-
-		fec.encode(readBuf[:alignSize], length, mServerSegCount, mServerFecCount, &fPacket, result)
+		mCodec.encode(fullData, realLen, &fPacket, encodeResult)
 
 		if mGap > 0 {
-			for i := range result {
+			for i := range encodeResult {
 				timer := time.NewTimer(time.Duration(gap*i) * time.Millisecond)
 				go func(index int) {
 					<-timer.C
-					_, err := mServerQueue.Push(result[index])
+					_, err := mServerQueue.Push(encodeResult[index])
 					if err != nil {
 						serverDrop++
 						println("server drop packet ", serverDrop)
@@ -177,8 +180,8 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 				}(i)
 			}
 		} else {
-			for i := range result {
-				_, err := mServerQueue.Push(result[i])
+			for i := range encodeResult {
+				_, err := mServerQueue.Push(encodeResult[i])
 				if err != nil {
 					serverDrop++
 					println("server drop packet ", serverDrop)

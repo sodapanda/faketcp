@@ -38,4 +38,5 @@ func (sb *stageBuffer) getFullData(result []byte) {
 	copy(result, sb.buffer[:sb.cursor])
 	//取出来之后重置一下
 	sb.cursor = 0
+	sb.size = 0
 }

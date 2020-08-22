@@ -77,25 +77,30 @@ func handShake(tun *water.Interface) {
 func clientTunToSocketFEC(tun *water.Interface) {
 	fmt.Println("client tun to socket with FEC")
 	buffer := make([]byte, 2000)
-	mFecRcv = newRecvCache(fecCacheSize)
-	fec := newFec(mServerSegCount, mServerFecCount)
+	decodeResult := make([]*FBuffer, mSegCount)
+	for i := range decodeResult {
+		decodeResult[i] = new(FBuffer)
+		decodeResult[i].data = make([]byte, 2000)
+	}
 
 	for {
 		n, err := tun.Read(buffer)
+		clientReceiveCount++
 		checkError(err)
 		data := buffer[:n]
 
-		subPkt := new(subPacket)
-		unPackSub(data[40:], subPkt)
-		result := poolGet()
-		done := mFecRcv.append(subPkt, fec, mServerSegCount, mServerFecCount, result)
-		if done {
-			_, err = clientConn.WriteToUDP(result.data[:result.len], clientAddr)
-		} else {
-			poolPut(result)
+		rcvPkt := new(ftPacket)
+		rcvPkt.decode(data[40:])
+
+		done := mCodec.decode(rcvPkt, decodeResult)
+		if !done {
+			continue
 		}
 
-		clientReceiveCount++
+		for _, d := range decodeResult {
+			_, err = clientConn.WriteToUDP(d.data[:d.len], clientAddr)
+		}
+
 		checkError(err)
 	}
 }
@@ -171,16 +176,32 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 	dstIP := net.ParseIP(serverIP).To4()
 	srcIP := net.IP{10, 1, 1, 2}.To4()
 
-	fec := newFec(mClientSegCount, mClientFecCount)
 	readBuf := make([]byte, 2000)
 
-	gapF := float64(mGap) / float64(mClientSegCount+mClientFecCount)
+	gapF := float64(mGap) / float64(mSegCount+mFecCount)
 	gap := int(math.Ceil(gapF))
+	sb := newStageBuffer(mSegCount)
+	fullDataBuffer := make([]byte, 2000)
+	encodeResult := make([]*FBuffer, mSegCount+mFecCount)
 
 	for {
 		length, cAddr, err := conn.ReadFromUDP(readBuf[0:])
 		checkError(err)
 		clientAddr = cAddr
+
+		segFull := sb.append(readBuf[0:length], uint16(length))
+		if !segFull {
+			continue
+		}
+
+		realLen := sb.length()
+		alignSize := mCodec.align(realLen)
+		fullData := fullDataBuffer[0:alignSize]
+		sb.getFullData(fullData)
+
+		for i := range encodeResult {
+			encodeResult[i] = poolGet()
+		}
 
 		fPacket := FPacket{}
 		fPacket.srcIP = srcIP
@@ -198,39 +219,28 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 		fPacket.syn = false
 		fPacket.ack = true
 
-		result := make([]*FBuffer, mClientSegCount+mClientFecCount)
-		if length <= 200 && disableSmallFEC {
-			result = make([]*FBuffer, 2)
-		}
-		for i := range result {
-			result[i] = poolGet()
-		}
-
-		if length <= 200 && disableSmallFEC {
-			fec.encodeSmallPkt(readBuf[:length], &fPacket, result)
-		} else {
-			alignSize := minAlignSize(length, mClientSegCount)
-			fec.encode(readBuf[:alignSize], length, mClientSegCount, mClientFecCount, &fPacket, result)
-		}
+		mCodec.encode(fullData, realLen, &fPacket, encodeResult)
 
 		if mGap > 0 {
-			for i := range result {
+			for i := range encodeResult {
 				timer := time.NewTimer(time.Duration(gap*i) * time.Millisecond)
 				go func(index int) {
 					<-timer.C
-					_, err := mClientQueue.Push(result[index])
+					_, err := mClientQueue.Push(encodeResult[index])
 					if err != nil {
 						clientDrop++
 						println("client drop packet ", clientDrop)
+						poolPut(encodeResult[index])
 					}
 				}(i)
 			}
 		} else {
-			for i := range result {
-				_, err := mClientQueue.Push(result[i])
+			for i := range encodeResult {
+				_, err := mClientQueue.Push(encodeResult[i])
 				if err != nil {
 					clientDrop++
 					println("client drop packet ", clientDrop)
+					poolPut(encodeResult[i])
 				}
 			}
 		}
