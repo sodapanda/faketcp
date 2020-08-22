@@ -7,83 +7,72 @@ import (
 	"testing"
 )
 
-// func TestPacket(t *testing.T) {
-// 	fPacket := FPacket{
-// 		srcIP:   net.IP{10, 1, 1, 2}.To4(),
-// 		dstIP:   net.IP{10, 1, 1, 3}.To4(),
-// 		srcPort: 8888,
-// 		dstPort: 12270,
-// 		syn:     true,
-// 		ack:     false,
-// 		seqNum:  1,
-// 		ackNum:  2,
-// 	}
+func TestEncode(t *testing.T) {
+	readLength1 := 7
+	readLength2 := 6
+	udpData1 := make([]byte, readLength1)
+	for i := range udpData1 {
+		udpData1[i] = byte(i)
+	}
+	udpData2 := make([]byte, readLength2)
+	for i := range udpData2 {
+		udpData2[i] = byte(i)
+	}
+	sb := newStageBuffer(2)
 
-// 	packet := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}
-// 	len := craftPacket(packet, &fPacket)
-// 	fmt.Println("len =", len)
-// 	fmt.Println(hex.Dump(packet))
-// }
+	codec := newFecCodec(2, 1, 200)
 
-func TestFec(t *testing.T) {
-	fmt.Println("test FEC")
-	eFec = true
-	mClientSegCount = 2
-	mClientFecCount = 1
-	mServerSegCount = 2
-	mServerFecCount = 1
-	var paySize = 53
-	fec := newFec(mClientSegCount, mClientFecCount)
-	data := make([]byte, 2000)
-	alignSize := minAlignSize(paySize, mClientSegCount)
-	for i := range data {
-		data[i] = byte(i)
+	full := sb.append(udpData1, uint16(readLength1))
+	fmt.Println("full?", full)
+	full = sb.append(udpData2, uint16(readLength2))
+	fmt.Println("full?", full)
+
+	realLen := sb.length()
+	alignSize := codec.align(realLen)
+	fmt.Println("align size", alignSize)
+	fullData := make([]byte, alignSize)
+	sb.getFullData(fullData)
+
+	fmt.Println(hex.Dump(fullData))
+
+	encodeResult := make([]*FBuffer, 3)
+	for i := range encodeResult {
+		encodeResult[i] = &FBuffer{}
+		encodeResult[i].data = make([]byte, 1000)
 	}
 
-	result := make([]*FBuffer, mClientSegCount+mClientFecCount)
-	for i := range result {
-		result[i] = poolGet()
+	ipInfo := &FPacket{}
+	ipInfo.srcIP = net.IP{10, 0, 0, 1}.To4()
+	ipInfo.dstIP = net.IP{192, 168, 8, 1}.To4()
+	ipInfo.srcPort = 8888
+	ipInfo.dstPort = 8888
+	ipInfo.seqNum = 1
+
+	codec.encode(fullData, realLen, ipInfo, encodeResult)
+
+	for _, d := range encodeResult {
+		fmt.Println(hex.Dump(d.data[:d.len]))
 	}
 
-	fPacket := FPacket{
-		srcIP:   net.IP{10, 1, 1, 2}.To4(),
-		dstIP:   net.IP{10, 1, 1, 3}.To4(),
-		srcPort: 8888,
-		dstPort: 12270,
-		syn:     true,
-		ack:     false,
-		seqNum:  1,
-		ackNum:  2,
+	//decode
+	decodeResult := make([]*FBuffer, 2)
+	for i := range decodeResult {
+		decodeResult[i] = new(FBuffer)
+		decodeResult[i].data = make([]byte, 2000)
 	}
 
-	fecRcv := newRecvCache(5)
-	fec.encode(data[:alignSize], paySize, mClientSegCount, mClientFecCount, &fPacket, result)
-	fmt.Println("encode:")
-	for _, v := range result {
-		pData := v.data[:v.len]
-		fmt.Println("part Data")
-		fmt.Println(hex.Dump(pData))
-	}
+	for _, encodedPkt := range encodeResult {
+		rcvPkt := new(ftPacket)
+		rcvPkt.decode(encodedPkt.data[40:encodedPkt.len])
 
-	fmt.Println("decode:")
-	for i, fBuf := range result {
-		pData := fBuf.data[:fBuf.len]
-		if i != len(result)-1 {
-			doRcv(pData, fec, fecRcv)
+		done := codec.decode(rcvPkt, decodeResult)
+		if done {
+			break
 		}
 	}
-}
 
-func doRcv(packet []byte, fec *rsFec, fecRcv *fecRecvCache) {
-	subPkt := new(subPacket)
-	unPackSub(packet[40:], subPkt)
-	fmt.Println("subPkt ", subPkt.indexInRS)
-	result := poolGet()
-	done := fecRcv.append(subPkt, fec, mClientSegCount, mClientFecCount, result)
-	if done {
-		fmt.Println("done")
-		fmt.Println(hex.Dump(result.data[:result.len]))
-	} else {
-		fmt.Println("not done")
+	fmt.Println("decode")
+	for _, d := range decodeResult {
+		fmt.Println(hex.Dump(d.data[:d.len]))
 	}
 }
