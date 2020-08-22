@@ -168,17 +168,17 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 		mCodec.encode(fullData, realLen, &fPacket, encodeResult)
 
 		if mGap > 0 {
-			for i := range encodeResult {
+			for i, data := range encodeResult {
 				timer := time.NewTimer(time.Duration(gap*i) * time.Millisecond)
-				go func(index int) {
+				go func(packetData *FBuffer) {
 					<-timer.C
-					_, err := mServerQueue.Push(encodeResult[index])
+					_, err := mServerQueue.Push(packetData)
 					if err != nil {
 						serverDrop++
 						println("server drop packet ", serverDrop)
-						poolPut(encodeResult[index])
+						poolPut(packetData)
 					}
-				}(i)
+				}(data)
 			}
 		} else {
 			for i := range encodeResult {

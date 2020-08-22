@@ -222,17 +222,17 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 		mCodec.encode(fullData, realLen, &fPacket, encodeResult)
 
 		if mGap > 0 {
-			for i := range encodeResult {
+			for i, data := range encodeResult {
 				timer := time.NewTimer(time.Duration(gap*i) * time.Millisecond)
-				go func(index int) {
+				go func(packetData *FBuffer) {
 					<-timer.C
-					_, err := mClientQueue.Push(encodeResult[index])
+					_, err := mClientQueue.Push(packetData)
 					if err != nil {
 						clientDrop++
 						println("client drop packet ", clientDrop)
-						poolPut(encodeResult[index])
+						poolPut(packetData)
 					}
-				}(i)
+				}(data)
 			}
 		} else {
 			for i := range encodeResult {
