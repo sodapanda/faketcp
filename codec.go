@@ -133,7 +133,11 @@ func (codec *fecCodec) decode(ftp *ftPacket, result []*FBuffer) bool {
 	fullData := codec.fullPacketHolder[:ftp.realLength]
 
 	sCursor := 0
+	//如果是超时过来的话，只有一个包
 	for i := 0; i < codec.segCount; i++ {
+		if sCursor >= len(fullData) {
+			break
+		}
 		length := binary.BigEndian.Uint16(fullData[sCursor:])
 		sCursor = sCursor + 2
 		copy(result[i].data, fullData[sCursor:sCursor+int(length)])

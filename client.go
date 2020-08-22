@@ -189,62 +189,58 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 		checkError(err)
 		clientAddr = cAddr
 
-		segFull := sb.append(readBuf[0:length], uint16(length))
-		if !segFull {
-			continue
-		}
+		sb.append(readBuf[0:length], uint16(length), func(cSb *stageBuffer) {
+			realLen := cSb.length()
+			alignSize := mCodec.align(realLen)
+			fullData := fullDataBuffer[0:alignSize]
+			cSb.getFullData(fullData)
 
-		realLen := sb.length()
-		alignSize := mCodec.align(realLen)
-		fullData := fullDataBuffer[0:alignSize]
-		sb.getFullData(fullData)
+			for i := range encodeResult {
+				encodeResult[i] = poolGet()
+			}
 
-		for i := range encodeResult {
-			encodeResult[i] = poolGet()
-		}
+			fPacket := FPacket{}
+			fPacket.srcIP = srcIP
+			fPacket.dstIP = dstIP
+			fPacket.srcPort = 8888
+			fPacket.dstPort = uint16(serverPort)
+			fPacket.seqNum = cLastRecPacket.ackNum
+			if cLastRecPacket.syn {
+				// syn 也算一个
+				fPacket.ackNum = cLastRecPacket.seqNum + 1
+			} else {
+				fPacket.ackNum = cLastRecPacket.seqNum + uint32(len(cLastRecPacket.payload))
+			}
 
-		fPacket := FPacket{}
-		fPacket.srcIP = srcIP
-		fPacket.dstIP = dstIP
-		fPacket.srcPort = 8888
-		fPacket.dstPort = uint16(serverPort)
-		fPacket.seqNum = cLastRecPacket.ackNum
-		if cLastRecPacket.syn {
-			// syn 也算一个
-			fPacket.ackNum = cLastRecPacket.seqNum + 1
-		} else {
-			fPacket.ackNum = cLastRecPacket.seqNum + uint32(len(cLastRecPacket.payload))
-		}
+			fPacket.syn = false
+			fPacket.ack = true
 
-		fPacket.syn = false
-		fPacket.ack = true
+			mCodec.encode(fullData, realLen, &fPacket, encodeResult)
 
-		mCodec.encode(fullData, realLen, &fPacket, encodeResult)
-
-		if mGap > 0 {
-			for i, data := range encodeResult {
-				timer := time.NewTimer(time.Duration(gap*i) * time.Millisecond)
-				go func(packetData *FBuffer) {
-					<-timer.C
-					_, err := mClientQueue.Push(packetData)
+			if mGap > 0 {
+				for i, data := range encodeResult {
+					timer := time.NewTimer(time.Duration(gap*i) * time.Millisecond)
+					go func(packetData *FBuffer) {
+						<-timer.C
+						_, err := mClientQueue.Push(packetData)
+						if err != nil {
+							clientDrop++
+							println("client drop packet ", clientDrop)
+							poolPut(packetData)
+						}
+					}(data)
+				}
+			} else {
+				for i := range encodeResult {
+					_, err := mClientQueue.Push(encodeResult[i])
 					if err != nil {
 						clientDrop++
 						println("client drop packet ", clientDrop)
-						poolPut(packetData)
+						poolPut(encodeResult[i])
 					}
-				}(data)
-			}
-		} else {
-			for i := range encodeResult {
-				_, err := mClientQueue.Push(encodeResult[i])
-				if err != nil {
-					clientDrop++
-					println("client drop packet ", clientDrop)
-					poolPut(encodeResult[i])
 				}
 			}
-		}
-
+		})
 	}
 }
 

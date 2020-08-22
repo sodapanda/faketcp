@@ -139,57 +139,53 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 
 	for {
 		length, _ := serverConn.Read(readBuf[0:])
+		sb.append(readBuf[0:length], uint16(length), func(cSb *stageBuffer) {
+			realLen := cSb.length()
+			alignSize := mCodec.align(realLen)
+			fullData := fullDataBuffer[0:alignSize]
+			cSb.getFullData(fullData)
 
-		segFull := sb.append(readBuf[0:length], uint16(length))
-		if !segFull {
-			continue
-		}
+			for i := range encodeResult {
+				encodeResult[i] = poolGet()
+			}
 
-		realLen := sb.length()
-		alignSize := mCodec.align(realLen)
-		fullData := fullDataBuffer[0:alignSize]
-		sb.getFullData(fullData)
+			fPacket := FPacket{
+				srcIP:   net.IP{10, 1, 1, 2}.To4(),
+				dstIP:   peerIP.To4(),
+				srcPort: uint16(srcPort),
+				dstPort: uint16(peerPort),
+				syn:     false,
+				ack:     true,
+				seqNum:  mSerSeq + uint32(length),
+				ackNum:  lastRecPacket.seqNum + uint32(len(lastRecPacket.payload)),
+			}
 
-		for i := range encodeResult {
-			encodeResult[i] = poolGet()
-		}
+			mCodec.encode(fullData, realLen, &fPacket, encodeResult)
 
-		fPacket := FPacket{
-			srcIP:   net.IP{10, 1, 1, 2}.To4(),
-			dstIP:   peerIP.To4(),
-			srcPort: uint16(srcPort),
-			dstPort: uint16(peerPort),
-			syn:     false,
-			ack:     true,
-			seqNum:  mSerSeq + uint32(length),
-			ackNum:  lastRecPacket.seqNum + uint32(len(lastRecPacket.payload)),
-		}
-
-		mCodec.encode(fullData, realLen, &fPacket, encodeResult)
-
-		if mGap > 0 {
-			for i, data := range encodeResult {
-				timer := time.NewTimer(time.Duration(gap*i) * time.Millisecond)
-				go func(packetData *FBuffer) {
-					<-timer.C
-					_, err := mServerQueue.Push(packetData)
+			if mGap > 0 {
+				for i, data := range encodeResult {
+					timer := time.NewTimer(time.Duration(gap*i) * time.Millisecond)
+					go func(packetData *FBuffer) {
+						<-timer.C
+						_, err := mServerQueue.Push(packetData)
+						if err != nil {
+							serverDrop++
+							println("server drop packet ", serverDrop)
+							poolPut(packetData)
+						}
+					}(data)
+				}
+			} else {
+				for i := range encodeResult {
+					_, err := mServerQueue.Push(encodeResult[i])
 					if err != nil {
 						serverDrop++
 						println("server drop packet ", serverDrop)
-						poolPut(packetData)
+						poolPut(encodeResult[i])
 					}
-				}(data)
-			}
-		} else {
-			for i := range encodeResult {
-				_, err := mServerQueue.Push(encodeResult[i])
-				if err != nil {
-					serverDrop++
-					println("server drop packet ", serverDrop)
-					poolPut(encodeResult[i])
 				}
 			}
-		}
+		})
 	}
 }
 
