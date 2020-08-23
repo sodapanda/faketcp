@@ -27,6 +27,7 @@ var mSegCount = 1
 var mFecCount = 1
 var mGap = 0
 var mReport = false
+var mTimeoutMilli = 20
 
 var serverTunSrcPort = clientTunDstPort
 var serverTunSrcIP = "10.1.1.2"
@@ -36,6 +37,7 @@ var fecCacheSize = 5000
 //todo 发送延迟和接收延迟分别定义
 
 var mCodec *fecCodec
+var timeOutCount = 0
 
 func main() {
 	go func() {
@@ -51,6 +53,7 @@ func main() {
 	fFecGap := flag.Int("gap", 0, "fec packet send time gap")
 	fReport := flag.Bool("re", false, "get report")
 	fCacheSize := flag.Int("fcs", 5000, "fec list cache size")
+	fTimeoutMilli := flag.Int("timeout", 20, "time out in millis")
 	flag.Parse()
 
 	clientTunDstIP = *fClientTunDstIP
@@ -63,6 +66,7 @@ func main() {
 	mGap = *fFecGap
 	mReport = *fReport
 	fecCacheSize = *fCacheSize
+	mTimeoutMilli = *fTimeoutMilli
 
 	tun := createTUN("faketcp")
 
@@ -118,6 +122,7 @@ func main() {
 		fmt.Println("client send count ", clientSendCount)
 		fmt.Println("client receive count ", clientReceiveCount)
 	}
+	fmt.Println("timeout count ", timeOutCount)
 	if mReport {
 		// mFecRcv.dump()
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"container/list"
 	"encoding/binary"
+	"fmt"
 	"math"
 
 	"github.com/klauspost/reedsolomon"
@@ -85,13 +86,18 @@ func (codec *fecCodec) decode(ftp *ftPacket, result []*FBuffer) bool {
 		firstKey := firstKeyElm.Value.(uint64)
 		ftps := codec.decodeLinkMap[firstKey]
 		for _, ftp := range ftps {
-			mFtPool.poolPut(ftp)
+			if ftp != nil {
+				mFtPool.poolPut(ftp)
+			}
 		}
 		delete(codec.decodeLinkMap, firstKey)
 		codec.keyList.Remove(firstKeyElm)
 	}
 
 	poolFtp := mFtPool.poolGet()
+	if poolFtp == nil {
+		fmt.Println("poolFtp is nil!!")
+	}
 	poolFtp.len = len(ftp.data)
 	poolFtp.gID = ftp.gID
 	poolFtp.index = ftp.index

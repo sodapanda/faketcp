@@ -22,7 +22,6 @@ var cLastRecPacket FPacket
 var reduntCount int
 var reorderCount int
 var pushbackCount int
-var timeoutCount int
 var emptyPutCount int
 var poolWrongFlag bool
 
@@ -184,7 +183,7 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 	gapF := float64(mGap) / float64(mSegCount+mFecCount)
 	gap := int(math.Ceil(gapF))
 	sb := newStageBuffer(mSegCount)
-	fullDataBuffer := make([]byte, 2000)
+	fullDataBuffer := make([]byte, 2000*mSegCount)
 	encodeResult := make([]*FBuffer, mSegCount+mFecCount)
 
 	for {
@@ -192,12 +191,7 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 		checkError(err)
 		clientAddr = cAddr
 
-		sb.append(readBuf[0:length], uint16(length), func(cSb *stageBuffer) {
-			realLen := cSb.length()
-			alignSize := mCodec.align(realLen)
-			fullData := fullDataBuffer[0:alignSize]
-			cSb.getFullData(fullData)
-
+		sb.append(readBuf[0:length], uint16(length), fullDataBuffer, mCodec, func(cSb *stageBuffer, resultData []byte, realLength int) {
 			for i := range encodeResult {
 				encodeResult[i] = poolGet()
 			}
@@ -218,7 +212,7 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 			fPacket.syn = false
 			fPacket.ack = true
 
-			mCodec.encode(fullData, realLen, &fPacket, encodeResult)
+			mCodec.encode(resultData, realLength, &fPacket, encodeResult)
 
 			if mGap > 0 {
 				for i, data := range encodeResult {

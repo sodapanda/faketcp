@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/binary"
-	"fmt"
 	"sync"
 	"time"
 )
@@ -23,26 +22,29 @@ func newStageBuffer(cap int) *stageBuffer {
 	sbuffer.buffer = make([]byte, 2000*cap)
 	sbuffer.size = 0
 	sbuffer.cursor = 0
-	sbuffer.waitTime = time.Duration(20) * time.Millisecond
-	sbuffer.sTimer = time.NewTimer(sbuffer.waitTime)
+	sbuffer.waitTime = time.Duration(mTimeoutMilli) * time.Millisecond
 	return sbuffer
 }
 
-func (sb *stageBuffer) append(data []byte, length uint16, callback func(*stageBuffer)) {
+func (sb *stageBuffer) append(data []byte, length uint16, resultBuffer []byte, codec *fecCodec, callback func(*stageBuffer, []byte, int)) {
+	sb.lock.Lock()
+	defer sb.lock.Unlock()
+
 	if sb.size == 0 {
-		sb.sTimer.Reset(sb.waitTime)
+		sb.sTimer = time.NewTimer(sb.waitTime)
 		go func() {
 			<-sb.sTimer.C
-			fmt.Println("time out!")
+			timeOutCount++
 			sb.lock.Lock()
 			defer sb.lock.Unlock()
-			callback(sb)
+			alignLen := codec.align(sb.cursor)
+			copy(resultBuffer, sb.buffer[:sb.cursor])
+			callback(sb, resultBuffer[:alignLen], sb.cursor)
 			sb.cursor = 0
 			sb.size = 0
 		}()
 	}
-	sb.lock.Lock()
-	defer sb.lock.Unlock()
+
 	binary.BigEndian.PutUint16(sb.buffer[sb.cursor:], length)
 	sb.cursor = sb.cursor + 2
 	copy(sb.buffer[sb.cursor:], data)
@@ -50,19 +52,10 @@ func (sb *stageBuffer) append(data []byte, length uint16, callback func(*stageBu
 	sb.size = sb.size + 1
 	if sb.size == sb.capacity {
 		sb.sTimer.Stop()
-		callback(sb)
+		alignLen := codec.align(sb.cursor)
+		copy(resultBuffer, sb.buffer[:sb.cursor])
+		callback(sb, resultBuffer[:alignLen], sb.cursor)
 		sb.cursor = 0
 		sb.size = 0
 	}
-}
-
-func (sb *stageBuffer) length() int {
-	return sb.cursor
-}
-
-func (sb *stageBuffer) getFullData(result []byte) {
-	copy(result, sb.buffer[:sb.cursor])
-	//取出来之后重置一下
-	sb.cursor = 0
-	sb.size = 0
 }

@@ -137,17 +137,12 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 	gapF := float64(mGap) / float64(mSegCount+mFecCount)
 	gap := int(math.Ceil(gapF))
 	sb := newStageBuffer(mSegCount)
-	fullDataBuffer := make([]byte, 2000)
+	fullDataBuffer := make([]byte, 2000*mSegCount)
 	encodeResult := make([]*FBuffer, mSegCount+mFecCount)
 
 	for {
 		length, _ := serverConn.Read(readBuf[0:])
-		sb.append(readBuf[0:length], uint16(length), func(cSb *stageBuffer) {
-			realLen := cSb.length()
-			alignSize := mCodec.align(realLen)
-			fullData := fullDataBuffer[0:alignSize]
-			cSb.getFullData(fullData)
-
+		sb.append(readBuf[0:length], uint16(length), fullDataBuffer, mCodec, func(cSb *stageBuffer, resultData []byte, realLength int) {
 			for i := range encodeResult {
 				encodeResult[i] = poolGet()
 			}
@@ -163,7 +158,7 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 				ackNum:  lastRecPacket.seqNum + uint32(len(lastRecPacket.payload)),
 			}
 
-			mCodec.encode(fullData, realLen, &fPacket, encodeResult)
+			mCodec.encode(resultData, realLength, &fPacket, encodeResult)
 
 			if mGap > 0 {
 				for i, data := range encodeResult {

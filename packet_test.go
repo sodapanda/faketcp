@@ -31,14 +31,9 @@ func TestEncode(t *testing.T) {
 		} else {
 			udpData = udpData2
 		}
-		sb.append(udpData, uint16(len(udpData)), func(sb *stageBuffer) {
-			realLen := sb.length()
-			alignSize := codec.align(realLen)
-			fmt.Println("align size", alignSize)
-			fullData := make([]byte, alignSize)
-			sb.getFullData(fullData)
-
-			fmt.Println(hex.Dump(fullData))
+		resultBuffer := make([]byte, 2000)
+		sb.append(udpData, uint16(len(udpData)), resultBuffer, codec, func(sb *stageBuffer, resultData []byte, realLen int) {
+			fmt.Println(hex.Dump(resultData))
 
 			encodeResult := make([]*FBuffer, 3)
 			for i := range encodeResult {
@@ -53,7 +48,7 @@ func TestEncode(t *testing.T) {
 			ipInfo.dstPort = 8888
 			ipInfo.seqNum = 1
 
-			codec.encode(fullData, realLen, ipInfo, encodeResult)
+			codec.encode(resultData, realLen, ipInfo, encodeResult)
 
 			for _, d := range encodeResult {
 				fmt.Println(hex.Dump(d.data[:d.len]))
