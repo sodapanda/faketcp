@@ -121,6 +121,7 @@ func serverTunToSocketFEC(tun *water.Interface) {
 				continue
 			}
 			_, err = serverConn.Write(d.data[:d.len])
+			d.len = 0 //设置为0 表示没有内容
 		}
 		checkError(err)
 	}

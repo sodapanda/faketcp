@@ -105,6 +105,9 @@ func (codec *fecCodec) decode(ftp *ftPacket, result []*FBuffer) bool {
 	copy(poolFtp.data, ftp.data)
 
 	row := codec.decodeLinkMap[ftp.gID]
+	if row[ftp.index] != nil {
+		fmt.Println("Dup!", ftp.gID, ftp.index)
+	}
 	row[ftp.index] = poolFtp
 
 	gotCount := 0
@@ -157,4 +160,20 @@ func (codec *fecCodec) decode(ftp *ftPacket, result []*FBuffer) bool {
 func (codec *fecCodec) align(length int) int {
 	minBucket := math.Ceil(float64(length) / float64(codec.segCount))
 	return int(minBucket) * codec.segCount
+}
+
+func (codec *fecCodec) dump() {
+	for e := codec.keyList.Front(); e != nil; e = e.Next() {
+		fKey := e.Value.(uint64)
+		ftPkts := codec.decodeLinkMap[fKey]
+		fmt.Print(fKey)
+		for _, pkt := range ftPkts {
+			if pkt == nil {
+				fmt.Print("❌")
+			} else {
+				fmt.Print("✅")
+			}
+		}
+		fmt.Print("\n")
+	}
 }

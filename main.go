@@ -124,7 +124,7 @@ func main() {
 	}
 	fmt.Println("timeout count ", timeOutCount)
 	if mReport {
-		// mFecRcv.dump()
+		mCodec.dump()
 	}
 }
 
