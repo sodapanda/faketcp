@@ -163,7 +163,9 @@ func (codec *fecCodec) align(length int) int {
 }
 
 func (codec *fecCodec) dump() {
+	inCompCount := 0
 	for e := codec.keyList.Front(); e != nil; e = e.Next() {
+		gotCount := 0
 		fKey := e.Value.(uint64)
 		ftPkts := codec.decodeLinkMap[fKey]
 		fmt.Print(fKey)
@@ -172,8 +174,13 @@ func (codec *fecCodec) dump() {
 				fmt.Print("❌")
 			} else {
 				fmt.Print("✅")
+				gotCount++
 			}
+		}
+		if gotCount < mSegCount {
+			inCompCount++
 		}
 		fmt.Print("\n")
 	}
+	fmt.Println("not complete row ", inCompCount)
 }

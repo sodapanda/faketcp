@@ -41,7 +41,7 @@ func newFtPool() *ftPool {
 	ftpool.dataPool = sync.Pool{
 		New: func() interface{} {
 			data := new(ftPacket)
-			data.data = make([]byte, 1000)
+			data.data = make([]byte, 2000)
 			return data
 		},
 	}
