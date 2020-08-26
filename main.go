@@ -79,7 +79,11 @@ func main() {
 	mCodec = newFecCodec(mSegCount, mFecCount, fecCacheSize)
 
 	if *isServer {
-		serverHandShake(tun)
+		// serverHandShake(tun)
+		sh := newServerHandshak(tun)
+		sh.waitSyn()
+		sh.sendSynAck()
+		sh.waitAck()
 		//接收
 		if eFec {
 			go serverTunToSocketFEC(tun)

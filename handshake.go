@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -29,6 +30,7 @@ func newClientHandshak(timeout time.Duration, tun *water.Interface) *clientHandS
 	return chs
 }
 
+//连不上的时候要不断的发送是为了等底层的网络重播完成之后拿到了新的ip了，要把一路上的nat打通
 func (chs *clientHandShake) sendSYN() {
 	chs.Lock()
 	defer chs.Unlock()
@@ -101,4 +103,76 @@ func (chs *clientHandShake) sendAck() {
 	_, err := chs.tun.Write(chs.recvPkt.data[:chs.recvPkt.len])
 	checkError(err)
 	fmt.Println("send ack")
+}
+
+/*
+服务端握手
+*/
+
+type serverHandshake struct {
+	tun       *water.Interface
+	clientSeq uint32
+}
+
+func newServerHandshak(tun *water.Interface) *serverHandshake {
+	mServerQueue, _ = blockingQueues.NewArrayBlockingQueue(uint64(queueLen))
+	sh := new(serverHandshake)
+	sh.tun = tun
+	return sh
+}
+
+func (sh *serverHandshake) waitSyn() {
+	fmt.Println("server waiting for SYN")
+	packet := make([]byte, 40)
+	_, err := sh.tun.Read(packet)
+	checkError(err)
+	fPacket := FPacket{}
+	fPacket.srcIP = make([]byte, 4)
+	fPacket.dstIP = make([]byte, 4)
+	unpacket(packet, &fPacket)
+	if !fPacket.syn {
+		fmt.Println("server get first packet not SYN!")
+		os.Exit(1)
+	}
+	peerIP = make([]byte, 4)
+	copy(peerIP, fPacket.srcIP)
+	peerPort = fPacket.srcPort
+	sh.clientSeq = fPacket.seqNum
+}
+
+func (sh *serverHandshake) sendSynAck() {
+	fmt.Println("server send syn+ack")
+	packet := make([]byte, 40)
+	fPacket := FPacket{}
+	fPacket.srcIP = net.ParseIP(clientTunSrcIP).To4()
+	fPacket.dstIP = make([]byte, 4)
+	copy(fPacket.dstIP, peerIP)
+	fPacket.srcPort = uint16(serverTunSrcPort)
+	fPacket.dstPort = peerPort
+	fPacket.syn = true
+	fPacket.ack = true
+	fPacket.seqNum = 1000 //首次发送syn
+	fPacket.ackNum = sh.clientSeq + 1
+	fPacket.payload = nil
+
+	craftPacket(packet, &fPacket)
+	_, err := sh.tun.Write(packet)
+	checkError(err)
+	mSerSeq = 1000
+}
+
+func (sh *serverHandshake) waitAck() {
+	packet := make([]byte, 40)
+	fPacket := FPacket{}
+	_, err := sh.tun.Read(packet)
+	checkError(err)
+	lastRecPacket = FPacket{}
+	lastRecPacket.srcIP = make([]byte, 4)
+	lastRecPacket.dstIP = make([]byte, 4)
+	unpacket(packet, &fPacket)
+	if !fPacket.ack {
+		fmt.Println("server get not ack")
+		os.Exit(1)
+	}
+	fmt.Println("server got ack hand shake done")
 }
