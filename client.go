@@ -25,54 +25,6 @@ var pushbackCount int
 var emptyPutCount int
 var poolWrongFlag bool
 
-func handShake(tun *water.Interface) {
-	//发送Syn
-	mClientQueue, _ = blockingQueues.NewArrayBlockingQueue(uint64(queueLen))
-
-	srcIP := net.ParseIP(clientTunSrcIP)
-	dstIP := net.ParseIP(clientTunDstIP)
-	fmt.Printf("client sending SYN... %s %d \n", dstIP, clientTunDstPort)
-
-	packet := make([]byte, 40)
-	fPacket := FPacket{}
-	fPacket.srcIP = srcIP.To4()
-	fPacket.dstIP = dstIP.To4()
-	fPacket.srcPort = uint16(clientTunSrcPort)
-	fPacket.dstPort = uint16(clientTunDstPort)
-	fPacket.syn = true
-	fPacket.ack = false
-	fPacket.seqNum = 1024 //初始化seq
-	fPacket.ackNum = 0
-	fPacket.payload = nil
-
-	craftPacket(packet, &fPacket)
-	_, err := tun.Write(packet)
-	checkError(err)
-
-	//接受syn+ack
-	_, err = tun.Read(packet)
-
-	cLastRecPacket = FPacket{}
-	cLastRecPacket.srcIP = make([]byte, 4)
-	cLastRecPacket.dstIP = make([]byte, 4)
-
-	unpacket(packet, &cLastRecPacket)
-	serverSeq := cLastRecPacket.seqNum
-	serverAck := cLastRecPacket.ackNum
-	fmt.Println("client got syn+ack")
-
-	//发送ack
-	fPacket.syn = false
-	fPacket.ack = true
-	fPacket.seqNum = serverAck
-	fPacket.ackNum = serverSeq + 1
-
-	craftPacket(packet, &fPacket)
-	_, err = tun.Write(packet)
-	checkError(err)
-	fmt.Println("client send ack")
-}
-
 func clientTunToSocketFEC(tun *water.Interface) {
 	fmt.Println("client tun to socket with FEC")
 	buffer := make([]byte, 2000)

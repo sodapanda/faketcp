@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"time"
 
 	"bufio"
 	"fmt"
@@ -95,7 +96,21 @@ func main() {
 	} else {
 		fmt.Println("server reader?")
 		bufio.NewReader(os.Stdin).ReadString('\n')
-		handShake(tun)
+		chs := newClientHandshak(time.Duration(2)*time.Second, tun)
+		chs.startListen()
+		chs.sendSYN()
+
+		for {
+			time.Sleep(time.Duration(1) * time.Second)
+			if chs.checkConn() {
+				break
+			}
+			chs.sendSYN()
+			fmt.Println("client handshake retry")
+		}
+
+		chs.sendAck()
+
 		//接收
 		if eFec {
 			go clientTunToSocketFEC(tun)
