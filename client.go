@@ -28,7 +28,7 @@ var poolWrongFlag bool
 func clientTunToSocketFEC(tun *water.Interface, chann chan string) {
 	fmt.Println("client tun to socket with FEC")
 	buffer := make([]byte, 2000)
-	decodeResult := make([]*FBuffer, mSegCount)
+	decodeResult := make([]*FBuffer, mConfig.SegCount)
 	for i := range decodeResult {
 		decodeResult[i] = new(FBuffer)
 		decodeResult[i].data = make([]byte, 2000)
@@ -133,11 +133,11 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 
 	readBuf := make([]byte, 2000)
 
-	gapF := float64(mGap) / float64(mSegCount+mFecCount)
+	gapF := float64(mConfig.Gap) / float64(mConfig.SegCount+mConfig.FecCount)
 	gap := int(math.Ceil(gapF))
-	sb := newStageBuffer(mSegCount)
-	fullDataBuffer := make([]byte, 2000*mSegCount)
-	encodeResult := make([]*FBuffer, mSegCount+mFecCount)
+	sb := newStageBuffer(mConfig.SegCount)
+	fullDataBuffer := make([]byte, 2000*mConfig.SegCount)
+	encodeResult := make([]*FBuffer, mConfig.SegCount+mConfig.FecCount)
 
 	for {
 		length, cAddr, err := conn.ReadFromUDP(readBuf[0:])
@@ -167,7 +167,7 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 
 			mCodec.encode(resultData, realLength, &fPacket, encodeResult)
 
-			if mGap > 0 {
+			if mConfig.Gap > 0 {
 				for i, data := range encodeResult {
 					timer := time.NewTimer(time.Duration(gap*i) * time.Millisecond)
 					go func(packetData *FBuffer) {

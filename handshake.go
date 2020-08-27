@@ -20,7 +20,7 @@ type clientHandShake struct {
 }
 
 func newClientHandshak(timeout time.Duration, tun *water.Interface) *clientHandShake {
-	mClientQueue, _ = blockingQueues.NewArrayBlockingQueue(uint64(queueLen))
+	mClientQueue, _ = blockingQueues.NewArrayBlockingQueue(uint64(mConfig.QLen))
 	chs := new(clientHandShake)
 	chs.timeout = timeout
 	chs.tun = tun
@@ -35,14 +35,14 @@ func (chs *clientHandShake) sendSYN() {
 	chs.Lock()
 	defer chs.Unlock()
 
-	srcIP := net.ParseIP(clientTunSrcIP)
-	dstIP := net.ParseIP(clientTunDstIP)
+	srcIP := net.ParseIP(mConfig.TunSrcIP).To4()
+	dstIP := net.ParseIP(mConfig.ClientTunToIP).To4()
 
 	fPacket := FPacket{}
-	fPacket.srcIP = srcIP.To4()
-	fPacket.dstIP = dstIP.To4()
-	fPacket.srcPort = uint16(clientTunSrcPort)
-	fPacket.dstPort = uint16(clientTunDstPort)
+	fPacket.srcIP = srcIP
+	fPacket.dstIP = dstIP
+	fPacket.srcPort = uint16(mConfig.TunSrcPort)
+	fPacket.dstPort = uint16(mConfig.ClientTunToPort)
 	fPacket.syn = true
 	fPacket.ack = false
 	fPacket.seqNum = 1024 //初始化seq
@@ -51,7 +51,7 @@ func (chs *clientHandShake) sendSYN() {
 	chs.recvPkt.len = 40
 	craftPacket(chs.recvPkt.data, &fPacket)
 	_, err := chs.tun.Write(chs.recvPkt.data[:chs.recvPkt.len])
-	fmt.Printf("client sending SYN... %s %d \n", dstIP, clientTunDstPort)
+	fmt.Printf("client sending SYN... %s %d \n", dstIP, mConfig.ClientTunToPort)
 	checkError(err)
 	chs.recvPkt.len = 0 //表示还没收到内容
 }
@@ -85,13 +85,13 @@ func (chs *clientHandShake) checkConn() bool {
 func (chs *clientHandShake) sendAck() {
 	//发送ack
 	fPacket := FPacket{}
-	srcIP := net.ParseIP(clientTunSrcIP)
-	dstIP := net.ParseIP(clientTunDstIP)
+	srcIP := net.ParseIP(mConfig.TunSrcIP).To4()
+	dstIP := net.ParseIP(mConfig.ClientTunToIP).To4()
 
 	fPacket.srcIP = srcIP.To4()
 	fPacket.dstIP = dstIP.To4()
-	fPacket.srcPort = uint16(clientTunSrcPort)
-	fPacket.dstPort = uint16(clientTunDstPort)
+	fPacket.srcPort = uint16(mConfig.TunSrcPort)
+	fPacket.dstPort = uint16(mConfig.ClientTunToPort)
 	fPacket.syn = false
 	fPacket.ack = true
 	fPacket.seqNum = cLastRecPacket.ackNum
@@ -115,7 +115,7 @@ type serverHandshake struct {
 }
 
 func newServerHandshak(tun *water.Interface) *serverHandshake {
-	mServerQueue, _ = blockingQueues.NewArrayBlockingQueue(uint64(queueLen))
+	mServerQueue, _ = blockingQueues.NewArrayBlockingQueue(uint64(mConfig.QLen))
 	sh := new(serverHandshake)
 	sh.tun = tun
 	return sh
@@ -144,10 +144,10 @@ func (sh *serverHandshake) sendSynAck() {
 	fmt.Println("server send syn+ack")
 	packet := make([]byte, 40)
 	fPacket := FPacket{}
-	fPacket.srcIP = net.ParseIP(clientTunSrcIP).To4()
+	fPacket.srcIP = net.ParseIP(mConfig.TunSrcIP).To4()
 	fPacket.dstIP = make([]byte, 4)
 	copy(fPacket.dstIP, peerIP)
-	fPacket.srcPort = uint16(serverTunSrcPort)
+	fPacket.srcPort = uint16(mConfig.ServerTunPort)
 	fPacket.dstPort = peerPort
 	fPacket.syn = true
 	fPacket.ack = true

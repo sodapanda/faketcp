@@ -22,7 +22,7 @@ func newStageBuffer(cap int) *stageBuffer {
 	sbuffer.buffer = make([]byte, 2000*cap)
 	sbuffer.size = 0
 	sbuffer.cursor = 0
-	sbuffer.waitTime = time.Duration(mTimeoutMilli) * time.Millisecond
+	sbuffer.waitTime = time.Duration(mConfig.StageTimeout) * time.Millisecond
 	return sbuffer
 }
 

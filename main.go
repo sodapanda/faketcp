@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
+	"io/ioutil"
 	"log"
 	"time"
 
@@ -16,58 +18,25 @@ import (
 	"github.com/songgao/water"
 )
 
-var clientSocketListenPort = "21007"
-
-var clientTunDstIP = "120.240.47.66"
-var clientTunDstPort = 12272
-var clientTunSrcIP = "10.1.1.2"
-var clientTunSrcPort = 8888
-var queueLen = 600
-var eFec = false
-var mSegCount = 1
-var mFecCount = 1
-var mGap = 0
-var mReport = false
-var mTimeoutMilli = 20
-
-var serverTunSrcPort = clientTunDstPort
-var serverTunSrcIP = "10.1.1.2"
-var serverSocketTo = "127.0.0.1:21007"
-var fecCacheSize = 5000
-
-//todo 发送延迟和接收延迟分别定义
-
 var mCodec *fecCodec
 var timeOutCount = 0
+
+var mConfig Config
 
 func main() {
 	go func() {
 		http.ListenAndServe(":8080", nil)
 	}()
-	isServer := flag.Bool("s", false, "is server")
-	fClientTunDstIP := flag.String("dip", "", "client set,server ip")
-	fClientTunDstPort := flag.Int("dport", 0, "client set, server port")
-	fQueueLen := flag.Int("qlen", 0, "queue len")
-	fEFec := flag.Bool("fec", false, "server and client,enable fec")
-	fSegCount := flag.Int("seg", 1, "server one packet segment into")
-	fFecCount := flag.Int("fseg", 1, "server fec segment count")
-	fFecGap := flag.Int("gap", 0, "fec packet send time gap")
-	fReport := flag.Bool("re", false, "get report")
-	fCacheSize := flag.Int("fcs", 5000, "fec list cache size")
-	fTimeoutMilli := flag.Int("timeout", 20, "time out in millis")
-	flag.Parse()
 
-	clientTunDstIP = *fClientTunDstIP
-	clientTunDstPort = *fClientTunDstPort
-	serverTunSrcPort = clientTunDstPort
-	queueLen = *fQueueLen
-	eFec = *fEFec
-	mSegCount = *fSegCount
-	mFecCount = *fFecCount
-	mGap = *fFecGap
-	mReport = *fReport
-	fecCacheSize = *fCacheSize
-	mTimeoutMilli = *fTimeoutMilli
+	fConfigPath := flag.String("c", "config.json", "config file path")
+	flag.Parse()
+	configPath := *fConfigPath
+
+	configFile, err := os.Open(configPath)
+	checkError(err)
+	defer configFile.Close()
+	configByte, _ := ioutil.ReadAll(configFile)
+	json.Unmarshal(configByte, &mConfig)
 
 	tun := createTUN("faketcp")
 
@@ -76,10 +45,10 @@ func main() {
 	cmd = exec.Command("ip", "link", "set", "up", "dev", "faketcp")
 	cmd.Run()
 
-	mCodec = newFecCodec(mSegCount, mFecCount, fecCacheSize)
+	mCodec = newFecCodec(mConfig.SegCount, mConfig.FecCount, mConfig.FecCacheSize)
 
 	go func() {
-		if *isServer {
+		if mConfig.Server {
 			//如果收到客户端要重连的请求，关闭其他操作之后执行握手
 			sh := newServerHandshak(tun)
 			sh.waitSyn() //这个不能在loop里，因为之所以重复循环是因为已经收到了syn包 不用再等了
@@ -97,16 +66,16 @@ func main() {
 				shb := newServerHeartBeat()
 				go shb.start(serverHeartBeatChan)
 				//接收
-				if eFec {
+				if mConfig.EnableFEC {
 					go serverTunToSocketFEC(tun, serverTuntoSocketChan)
 				} else {
 					go serverTunToSocket(tun, serverTuntoSocketChan)
 				}
 				//发送
-				if eFec {
-					go serverSocketToQueueFEC(serverSocketTo, serverTunSrcPort, serverSocketToQueueChan)
+				if mConfig.EnableFEC {
+					go serverSocketToQueueFEC(mConfig.ServerSocketTo, mConfig.ServerTunPort, serverSocketToQueueChan)
 				} else {
-					go serverSocketToQueueNoFEC(serverSocketTo, serverTunSrcPort, serverSocketToQueueChan)
+					go serverSocketToQueueNoFEC(mConfig.ServerSocketTo, mConfig.ServerTunPort, serverSocketToQueueChan)
 				}
 				go serverQueueToTun(tun, serverQueueToTunChan)
 
@@ -123,13 +92,12 @@ func main() {
 				//握手
 				chs := newClientHandshak(time.Duration(2)*time.Second, tun)
 				chs.startListen()
-				chs.sendSYN()
 				for {
+					chs.sendSYN()
 					time.Sleep(time.Duration(1) * time.Second)
 					if chs.checkConn() {
 						break
 					}
-					chs.sendSYN()
 					fmt.Println("client handshake retry")
 				}
 				chs.sendAck()
@@ -141,16 +109,16 @@ func main() {
 				clientQueueToTunChan := make(chan string)
 
 				//接收
-				if eFec {
+				if mConfig.EnableFEC {
 					go clientTunToSocketFEC(tun, clientTunToSocketChan)
 				} else {
 					go clientTunToSocketNoFEC(tun, clientTunToSocketChan)
 				}
 				//发送
-				if eFec {
-					go clientSocketToQueueFEC(clientSocketListenPort, clientTunDstIP, clientTunDstPort, clientSocketToQueueChan)
+				if mConfig.EnableFEC {
+					go clientSocketToQueueFEC(mConfig.ClientSocketListenPort, mConfig.ClientTunToIP, mConfig.ClientTunToPort, clientSocketToQueueChan)
 				} else {
-					go clientSocketToQueue(clientSocketListenPort, clientTunDstIP, clientTunDstPort, clientSocketToQueueChan)
+					go clientSocketToQueue(mConfig.ClientSocketListenPort, mConfig.ClientTunToIP, mConfig.ClientTunToPort, clientSocketToQueueChan)
 				}
 				go clientQueueToTun(tun, clientQueueToTunChan)
 				//心跳
@@ -171,7 +139,7 @@ func main() {
 	reader := bufio.NewReader(os.Stdin)
 	reader.ReadString('\n')
 
-	if *isServer {
+	if mConfig.Server {
 		fmt.Println("server drop ", serverDrop)
 		fmt.Println("server send ", serverSendCount)
 		fmt.Println("server recieve count ", serverReceiveCount)
@@ -181,7 +149,7 @@ func main() {
 		fmt.Println("client receive count ", clientReceiveCount)
 	}
 	fmt.Println("timeout count ", timeOutCount)
-	if mReport {
+	if mConfig.Report {
 		mCodec.dump()
 	}
 }
@@ -205,4 +173,25 @@ func checkError(err error) {
 		fmt.Fprintf(os.Stderr, "Fatal error: %s\n", err.Error())
 		os.Exit(1)
 	}
+}
+
+//Config config
+type Config struct {
+	Server                 bool   `json:"server"`
+	TunInterfaceIP         string `json:"tunInterfaceIP"`
+	TunSrcIP               string `json:"TunSrcIP"`
+	TunSrcPort             int    `json:"tunSrcPort"`
+	QLen                   int    `json:"qLen"`
+	EnableFEC              bool   `json:"enableFEC"`
+	SegCount               int    `json:"segCount"`
+	FecCount               int    `json:"fecCount"`
+	Gap                    int    `json:"gap"`
+	FecCacheSize           int    `json:"fecCacheSize"`
+	StageTimeout           int    `json:"stageTimeout"`
+	Report                 bool   `json:"report"`
+	ClientSocketListenPort string `json:"clientSocketListenPort"`
+	ClientTunToIP          string `json:"clientTunToIP"`
+	ClientTunToPort        int    `json:"clientTunToPort"`
+	ServerTunPort          int    `json:"serverTunPort"`
+	ServerSocketTo         string `json:"serverSocketTo"`
 }

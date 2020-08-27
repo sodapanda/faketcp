@@ -177,7 +177,7 @@ func (codec *fecCodec) dump() {
 				gotCount++
 			}
 		}
-		if gotCount < mSegCount {
+		if gotCount < mConfig.SegCount {
 			inCompCount++
 		}
 		fmt.Print("\n")

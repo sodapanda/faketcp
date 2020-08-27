@@ -1,0 +1,19 @@
+{
+    "server": false,
+    "tunInterfaceIP": "10.1.1.1",
+    "tunSrcIP": "10.1.1.2",
+    "tunSrcPort": 8888,
+    "qLen": 500,
+    "enableFEC": true,
+    "segCount": 20,
+    "fecCount": 10,
+    "gap": 20,
+    "fecCacheSize": 1000,
+    "stageTimeout": 10,
+    "report": false,
+    "clientSocketListenPort": "21007",
+    "clientTunToIP": "120.240.47.69",
+    "clientTunToPort": 10058,
+    "serverTunPort": 10058,
+    "serverSocketTo": "127.0.0.1:21007"
+}

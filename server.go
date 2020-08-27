@@ -52,7 +52,7 @@ func serverTunToSocket(tun *water.Interface, chann chan string) {
 func serverTunToSocketFEC(tun *water.Interface, chann chan string) {
 	fmt.Println("server tun to socket FEC")
 	buffer := make([]byte, 2000)
-	decodeResult := make([]*FBuffer, mSegCount)
+	decodeResult := make([]*FBuffer, mConfig.SegCount)
 	for i := range decodeResult {
 		decodeResult[i] = new(FBuffer)
 		decodeResult[i].data = make([]byte, 2000)
@@ -98,11 +98,11 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int, chann chan string)
 	checkError(err)
 	serverConn = conn
 	readBuf := make([]byte, 2000)
-	gapF := float64(mGap) / float64(mSegCount+mFecCount)
+	gapF := float64(mConfig.Gap) / float64(mConfig.SegCount+mConfig.FecCount)
 	gap := int(math.Ceil(gapF))
-	sb := newStageBuffer(mSegCount)
-	fullDataBuffer := make([]byte, 2000*mSegCount)
-	encodeResult := make([]*FBuffer, mSegCount+mFecCount)
+	sb := newStageBuffer(mConfig.SegCount)
+	fullDataBuffer := make([]byte, 2000*mConfig.SegCount)
+	encodeResult := make([]*FBuffer, mConfig.SegCount+mConfig.FecCount)
 
 	for {
 		length, _ := serverConn.Read(readBuf[0:])
@@ -124,7 +124,7 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int, chann chan string)
 
 			mCodec.encode(resultData, realLength, &fPacket, encodeResult)
 
-			if mGap > 0 {
+			if mConfig.Gap > 0 {
 				for i, data := range encodeResult {
 					timer := time.NewTimer(time.Duration(gap*i) * time.Millisecond)
 					go func(packetData *FBuffer) {
