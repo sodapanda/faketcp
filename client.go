@@ -11,21 +11,40 @@ import (
 	"github.com/theodesp/blockingQueues"
 )
 
-var clientConn *net.UDPConn
-var clientAddr *net.UDPAddr
-var mClientQueue *blockingQueues.BlockingQueue
-var clientDrop int
-var clientSendCount int
-var clientReceiveCount int
-var cLastRecPacket FPacket
+type client struct {
+	tun         *water.Interface
+	socketConn  *net.UDPConn
+	socketAddr  *net.UDPAddr
+	packetQueue *blockingQueues.BlockingQueue
+	lastRecvPkt *FPacket
+	tunDstIP    net.IP
+	tunSrcIP    net.IP
+	sent        int
+	recv        int
+	drop        int
+}
 
-var reduntCount int
-var reorderCount int
-var pushbackCount int
-var emptyPutCount int
-var poolWrongFlag bool
+func newClient(tun *water.Interface) *client {
+	clt := new(client)
+	clt.packetQueue, _ = blockingQueues.NewArrayBlockingQueue(uint64(mConfig.QLen))
+	clt.tun = tun
 
-func clientTunToSocketFEC(tun *water.Interface, chann chan string) {
+	udpAddr, err := net.ResolveUDPAddr("udp4", ":"+mConfig.ClientSocketListenPort)
+	conn, err := net.ListenUDP("udp", udpAddr)
+	checkError(err)
+	fmt.Printf("client listen socket %s\n", udpAddr)
+
+	clt.socketConn = conn
+	clt.socketAddr = udpAddr
+	clt.tunDstIP = net.ParseIP(mConfig.ClientTunToIP).To4()
+	clt.tunSrcIP = net.ParseIP(mConfig.TunSrcIP).To4()
+	clt.lastRecvPkt = new(FPacket)
+	clt.lastRecvPkt.srcIP = make([]byte, 4)
+	clt.lastRecvPkt.dstIP = make([]byte, 4)
+	return clt
+}
+
+func (clt *client) tunToSocketFEC(chann chan string) {
 	fmt.Println("client tun to socket with FEC")
 	buffer := make([]byte, 2000)
 	decodeResult := make([]*FBuffer, mConfig.SegCount)
@@ -35,8 +54,8 @@ func clientTunToSocketFEC(tun *water.Interface, chann chan string) {
 	}
 
 	for {
-		n, err := tun.Read(buffer)
-		clientReceiveCount++
+		n, err := clt.tun.Read(buffer)
+		clt.recv++
 		checkError(err)
 		data := buffer[:n]
 
@@ -52,7 +71,7 @@ func clientTunToSocketFEC(tun *water.Interface, chann chan string) {
 			if d.len == 0 {
 				continue
 			}
-			_, err = clientConn.WriteToUDP(d.data[:d.len], clientAddr)
+			_, err = clt.socketConn.WriteToUDP(d.data[:d.len], clt.socketAddr)
 			d.len = 0 //设置为0 表示没有内容
 		}
 
@@ -60,51 +79,44 @@ func clientTunToSocketFEC(tun *water.Interface, chann chan string) {
 	}
 }
 
-func clientTunToSocketNoFEC(tun *water.Interface, chann chan string) {
+func (clt *client) tunToSocketNoFEC(chann chan string) {
 	fmt.Println("client tun")
 	buffer := make([]byte, 2000)
 
 	for {
-		n, err := tun.Read(buffer)
+		n, err := clt.tun.Read(buffer)
+		clt.recv++
 		checkError(err)
 		data := buffer[:n]
 
-		unpacket(data, &cLastRecPacket)
+		unpacket(data, clt.lastRecvPkt)
 
-		_, err = clientConn.WriteToUDP(cLastRecPacket.payload, clientAddr)
-		clientReceiveCount++
+		_, err = clt.socketConn.WriteToUDP(clt.lastRecvPkt.payload, clt.socketAddr)
 		checkError(err)
 	}
 }
 
-func clientSocketToQueue(socketListenPort string, serverIP string, serverPort int, chann chan string) {
-	udpAddr, err := net.ResolveUDPAddr("udp4", ":"+socketListenPort)
-	conn, err := net.ListenUDP("udp", udpAddr)
-	checkError(err)
-	fmt.Printf("client listen socket %s\n", udpAddr)
-	clientConn = conn
-	dstIP := net.ParseIP(serverIP).To4()
-	srcIP := net.IP{10, 1, 1, 2}.To4()
+func (clt *client) socketToQueue(chann chan string) {
 	for {
 		fBuf := poolGet()
-		lenU, cAddr, err := conn.ReadFromUDP(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
+		lenU, cAddr, err := clt.socketConn.ReadFromUDP(fBuf.data[(header.IPv4MinimumSize + header.TCPMinimumSize):])
 		checkError(err)
-		clientAddr = cAddr
+		clt.socketAddr = cAddr
 
 		fBuf.len = lenU + header.IPv4MinimumSize + header.TCPMinimumSize
 
 		packet := fBuf.data[:fBuf.len]
 		fPacket := FPacket{}
-		fPacket.srcIP = srcIP
-		fPacket.dstIP = dstIP
-		fPacket.srcPort = 8888
-		fPacket.dstPort = uint16(serverPort)
-		fPacket.seqNum = cLastRecPacket.ackNum
-		if cLastRecPacket.syn {
+		fPacket.srcIP = clt.tunSrcIP
+		fPacket.dstIP = clt.tunDstIP
+		fPacket.srcPort = uint16(mConfig.TunSrcPort)
+		fPacket.dstPort = uint16(mConfig.ClientTunToPort)
+		fPacket.seqNum = clt.lastRecvPkt.ackNum
+		if clt.lastRecvPkt.syn {
 			// syn 也算一个
-			fPacket.ackNum = cLastRecPacket.seqNum + 1
+			fPacket.ackNum = clt.lastRecvPkt.seqNum + 1
 		} else {
-			fPacket.ackNum = cLastRecPacket.seqNum + uint32(len(cLastRecPacket.payload))
+			fPacket.ackNum = clt.lastRecvPkt.seqNum + uint32(len(clt.lastRecvPkt.payload))
 		}
 
 		fPacket.syn = false
@@ -112,25 +124,17 @@ func clientSocketToQueue(socketListenPort string, serverIP string, serverPort in
 
 		craftPacket(packet, &fPacket)
 
-		_, err = mClientQueue.Push(fBuf)
+		_, err = clt.packetQueue.Push(fBuf)
 
 		if err != nil {
-			clientDrop++
+			clt.drop++
 			poolPut(fBuf)
-			fmt.Println("client drop packet ", clientDrop)
+			fmt.Println("client drop packet ", clt.drop)
 		}
 	}
 }
 
-func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort int, chann chan string) {
-	udpAddr, err := net.ResolveUDPAddr("udp4", ":"+socketListenPort)
-	conn, err := net.ListenUDP("udp", udpAddr)
-	checkError(err)
-	fmt.Printf("client listen socket with FEC %s\n", udpAddr)
-	clientConn = conn
-	dstIP := net.ParseIP(serverIP).To4()
-	srcIP := net.IP{10, 1, 1, 2}.To4()
-
+func (clt *client) socketToQueueFEC(chann chan string) {
 	readBuf := make([]byte, 2000)
 
 	gapF := float64(mConfig.Gap) / float64(mConfig.SegCount+mConfig.FecCount)
@@ -140,9 +144,9 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 	encodeResult := make([]*FBuffer, mConfig.SegCount+mConfig.FecCount)
 
 	for {
-		length, cAddr, err := conn.ReadFromUDP(readBuf[0:])
+		length, cAddr, err := clt.socketConn.ReadFromUDP(readBuf[0:])
 		checkError(err)
-		clientAddr = cAddr
+		clt.socketAddr = cAddr
 
 		sb.append(readBuf[0:length], uint16(length), fullDataBuffer, mCodec, func(cSb *stageBuffer, resultData []byte, realLength int) {
 			for i := range encodeResult {
@@ -150,16 +154,16 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 			}
 
 			fPacket := FPacket{}
-			fPacket.srcIP = srcIP
-			fPacket.dstIP = dstIP
-			fPacket.srcPort = 8888
-			fPacket.dstPort = uint16(serverPort)
-			fPacket.seqNum = cLastRecPacket.ackNum
-			if cLastRecPacket.syn {
+			fPacket.srcIP = clt.tunSrcIP
+			fPacket.dstIP = clt.tunDstIP
+			fPacket.srcPort = uint16(mConfig.TunSrcPort)
+			fPacket.dstPort = uint16(mConfig.ClientTunToPort)
+			fPacket.seqNum = clt.lastRecvPkt.ackNum
+			if clt.lastRecvPkt.syn {
 				// syn 也算一个
-				fPacket.ackNum = cLastRecPacket.seqNum + 1
+				fPacket.ackNum = clt.lastRecvPkt.seqNum + 1
 			} else {
-				fPacket.ackNum = cLastRecPacket.seqNum + uint32(len(cLastRecPacket.payload))
+				fPacket.ackNum = clt.lastRecvPkt.seqNum + uint32(len(clt.lastRecvPkt.payload))
 			}
 
 			fPacket.syn = false
@@ -172,20 +176,20 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 					timer := time.NewTimer(time.Duration(gap*i) * time.Millisecond)
 					go func(packetData *FBuffer) {
 						<-timer.C
-						_, err := mClientQueue.Push(packetData)
+						_, err := clt.packetQueue.Push(packetData)
 						if err != nil {
-							clientDrop++
-							println("client drop packet ", clientDrop)
+							clt.drop++
+							println("client drop packet ", clt.drop)
 							poolPut(packetData)
 						}
 					}(data)
 				}
 			} else {
 				for i := range encodeResult {
-					_, err := mClientQueue.Push(encodeResult[i])
+					_, err := clt.packetQueue.Push(encodeResult[i])
 					if err != nil {
-						clientDrop++
-						println("client drop packet ", clientDrop)
+						clt.drop++
+						println("client drop packet ", clt.drop)
 						poolPut(encodeResult[i])
 					}
 				}
@@ -194,15 +198,15 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 	}
 }
 
-func clientQueueToTun(tun *water.Interface, chann chan string) {
+func (clt *client) queueToTun(chann chan string) {
 	fmt.Println("client queue to tun")
 	for {
-		item, _ := mClientQueue.Get()
+		item, _ := clt.packetQueue.Get()
 		fBuf := item.(*FBuffer)
 		data := fBuf.data[:fBuf.len]
 
-		writeLen, err := tun.Write(data)
-		clientSendCount++
+		writeLen, err := clt.tun.Write(data)
+		clt.sent++
 		poolPut(fBuf)
 		checkError(err)
 		if writeLen != len(data) {

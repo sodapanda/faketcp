@@ -17,15 +17,16 @@ type clientHandShake struct {
 	timeout   time.Duration
 	recvPkt   *FBuffer
 	getSynAck bool
+	clt       *client
 }
 
-func newClientHandshak(timeout time.Duration, tun *water.Interface) *clientHandShake {
-	mClientQueue, _ = blockingQueues.NewArrayBlockingQueue(uint64(mConfig.QLen))
+func newClientHandshak(timeout time.Duration, tun *water.Interface, clt *client) *clientHandShake {
 	chs := new(clientHandShake)
 	chs.timeout = timeout
 	chs.tun = tun
 	chs.recvPkt = &FBuffer{}
 	chs.recvPkt.data = make([]byte, 40)
+	chs.clt = clt
 	chs.recvPkt.len = 0 //用0表示没有内容
 	return chs
 }
@@ -65,12 +66,9 @@ func (chs *clientHandShake) startListen() {
 		chs.recvPkt.len = readLen
 		checkError(err)
 
-		cLastRecPacket = FPacket{}
-		cLastRecPacket.srcIP = make([]byte, 4)
-		cLastRecPacket.dstIP = make([]byte, 4)
 		packet := chs.recvPkt.data[:chs.recvPkt.len]
 
-		unpacket(packet, &cLastRecPacket)
+		unpacket(packet, chs.clt.lastRecvPkt)
 		chs.getSynAck = true
 		fmt.Println("client got syn+ack")
 	}()
@@ -94,8 +92,8 @@ func (chs *clientHandShake) sendAck() {
 	fPacket.dstPort = uint16(mConfig.ClientTunToPort)
 	fPacket.syn = false
 	fPacket.ack = true
-	fPacket.seqNum = cLastRecPacket.ackNum
-	fPacket.ackNum = cLastRecPacket.ackNum + 1
+	fPacket.seqNum = chs.clt.lastRecvPkt.ackNum
+	fPacket.ackNum = chs.clt.lastRecvPkt.ackNum + 1
 	fPacket.payload = nil
 
 	craftPacket(chs.recvPkt.data, &fPacket)

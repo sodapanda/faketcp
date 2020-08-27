@@ -87,10 +87,11 @@ func main() {
 				<-serverHeartBeatChan
 			}
 		} else {
+			mClt := newClient(tun)
 			//如果心跳出问题了，那么其他的go都要退出，重新开始进入握手状态
 			for {
 				//握手
-				chs := newClientHandshak(time.Duration(2)*time.Second, tun)
+				chs := newClientHandshak(time.Duration(2)*time.Second, tun, mClt)
 				chs.startListen()
 				for {
 					chs.sendSYN()
@@ -110,17 +111,17 @@ func main() {
 
 				//接收
 				if mConfig.EnableFEC {
-					go clientTunToSocketFEC(tun, clientTunToSocketChan)
+					go mClt.tunToSocketFEC(clientTunToSocketChan)
 				} else {
-					go clientTunToSocketNoFEC(tun, clientTunToSocketChan)
+					go mClt.tunToSocketNoFEC(clientTunToSocketChan)
 				}
 				//发送
 				if mConfig.EnableFEC {
-					go clientSocketToQueueFEC(mConfig.ClientSocketListenPort, mConfig.ClientTunToIP, mConfig.ClientTunToPort, clientSocketToQueueChan)
+					go mClt.socketToQueueFEC(clientSocketToQueueChan)
 				} else {
-					go clientSocketToQueue(mConfig.ClientSocketListenPort, mConfig.ClientTunToIP, mConfig.ClientTunToPort, clientSocketToQueueChan)
+					go mClt.socketToQueue(clientSocketToQueueChan)
 				}
-				go clientQueueToTun(tun, clientQueueToTunChan)
+				go mClt.queueToTun(clientQueueToTunChan)
 				//心跳
 				chb := newClientHeartBeat()
 				go chb.start(chbRst)
@@ -144,9 +145,9 @@ func main() {
 		fmt.Println("server send ", serverSendCount)
 		fmt.Println("server recieve count ", serverReceiveCount)
 	} else {
-		fmt.Println("client drop ", clientDrop)
-		fmt.Println("client send count ", clientSendCount)
-		fmt.Println("client receive count ", clientReceiveCount)
+		// fmt.Println("client drop ", mClt.drop)
+		// fmt.Println("client send count ", mClt.sent)
+		// fmt.Println("client receive count ", mClt.recv)
 	}
 	fmt.Println("timeout count ", timeOutCount)
 	if mConfig.Report {

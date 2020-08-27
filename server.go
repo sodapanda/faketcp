@@ -112,7 +112,7 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int, chann chan string)
 			}
 
 			fPacket := FPacket{
-				srcIP:   net.IP{10, 1, 1, 2}.To4(),
+				srcIP:   net.ParseIP(mConfig.TunSrcIP).To4(),
 				dstIP:   peerIP.To4(),
 				srcPort: uint16(srcPort),
 				dstPort: uint16(peerPort),
@@ -168,7 +168,7 @@ func serverSocketToQueueNoFEC(serverSendto string, srcPort int, chann chan strin
 		fBuf.len = length + header.IPv4MinimumSize + header.TCPMinimumSize
 		//在这里包装成IP包 入队列直接是IP包
 		fPacket := FPacket{
-			srcIP:   net.IP{10, 1, 1, 2}.To4(),
+			srcIP:   net.ParseIP(mConfig.TunSrcIP).To4(),
 			dstIP:   peerIP.To4(),
 			srcPort: uint16(srcPort),
 			dstPort: uint16(peerPort),
