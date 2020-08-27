@@ -23,7 +23,7 @@ var lastRecPacket FPacket
 var mSerSeq uint32
 var reduntCounter int
 
-func serverTunToSocket(tun *water.Interface) {
+func serverTunToSocket(tun *water.Interface, chann chan string) {
 	fmt.Println("server tun to socket")
 	buffer := make([]byte, 2000)
 
@@ -34,14 +34,22 @@ func serverTunToSocket(tun *water.Interface) {
 			os.Exit(1)
 		}
 		checkError(err)
+
 		data := buffer[:len]
+		isSyn := checkSYN(data)
+
+		if isSyn {
+			chann <- "newSyn"
+			return
+		}
+
 		_, err = serverConn.Write(data[header.IPv4MinimumSize+header.TCPMinimumSize:])
 		serverReceiveCount++
 		checkError(err)
 	}
 }
 
-func serverTunToSocketFEC(tun *water.Interface) {
+func serverTunToSocketFEC(tun *water.Interface, chann chan string) {
 	fmt.Println("server tun to socket FEC")
 	buffer := make([]byte, 2000)
 	decodeResult := make([]*FBuffer, mSegCount)
@@ -55,6 +63,13 @@ func serverTunToSocketFEC(tun *water.Interface) {
 		serverReceiveCount++
 		checkError(err)
 		data := buffer[:len]
+
+		isSyn := checkSYN(data)
+
+		if isSyn {
+			chann <- "newSyn"
+			return
+		}
 
 		rcvPkt := new(ftPacket)
 		rcvPkt.decode(data[40:])
@@ -75,7 +90,7 @@ func serverTunToSocketFEC(tun *water.Interface) {
 	}
 }
 
-func serverSocketToQueueFEC(serverSendto string, srcPort int) {
+func serverSocketToQueueFEC(serverSendto string, srcPort int, chann chan string) {
 	fmt.Println("server socket to queue with FEC")
 	udpAddr, err := net.ResolveUDPAddr("udp4", serverSendto)
 	checkError(err)
@@ -136,7 +151,7 @@ func serverSocketToQueueFEC(serverSendto string, srcPort int) {
 	}
 }
 
-func serverSocketToQueueNoFEC(serverSendto string, srcPort int) {
+func serverSocketToQueueNoFEC(serverSendto string, srcPort int, chann chan string) {
 	fmt.Println("server socket to queue")
 
 	udpAddr, err := net.ResolveUDPAddr("udp4", serverSendto)
@@ -174,7 +189,7 @@ func serverSocketToQueueNoFEC(serverSendto string, srcPort int) {
 	}
 }
 
-func serverQueueToTun(tun *water.Interface) {
+func serverQueueToTun(tun *water.Interface, chann chan string) {
 	for {
 		item, _ := mServerQueue.Get()
 		fBuf := item.(*FBuffer)
@@ -189,4 +204,18 @@ func serverQueueToTun(tun *water.Interface) {
 			fmt.Println("server tun write not full")
 		}
 	}
+}
+
+var checkPacket FPacket
+
+func checkSYN(pkt []byte) bool {
+	unpacket(pkt, &checkPacket)
+	if checkPacket.syn {
+		return true
+	}
+	return false
+}
+
+func serverStop() {
+
 }

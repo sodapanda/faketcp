@@ -25,7 +25,7 @@ var pushbackCount int
 var emptyPutCount int
 var poolWrongFlag bool
 
-func clientTunToSocketFEC(tun *water.Interface) {
+func clientTunToSocketFEC(tun *water.Interface, chann chan string) {
 	fmt.Println("client tun to socket with FEC")
 	buffer := make([]byte, 2000)
 	decodeResult := make([]*FBuffer, mSegCount)
@@ -60,7 +60,7 @@ func clientTunToSocketFEC(tun *water.Interface) {
 	}
 }
 
-func clientTunToSocketNoFEC(tun *water.Interface) {
+func clientTunToSocketNoFEC(tun *water.Interface, chann chan string) {
 	fmt.Println("client tun")
 	buffer := make([]byte, 2000)
 
@@ -77,7 +77,7 @@ func clientTunToSocketNoFEC(tun *water.Interface) {
 	}
 }
 
-func clientSocketToQueue(socketListenPort string, serverIP string, serverPort int) {
+func clientSocketToQueue(socketListenPort string, serverIP string, serverPort int, chann chan string) {
 	udpAddr, err := net.ResolveUDPAddr("udp4", ":"+socketListenPort)
 	conn, err := net.ListenUDP("udp", udpAddr)
 	checkError(err)
@@ -122,7 +122,7 @@ func clientSocketToQueue(socketListenPort string, serverIP string, serverPort in
 	}
 }
 
-func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort int) {
+func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort int, chann chan string) {
 	udpAddr, err := net.ResolveUDPAddr("udp4", ":"+socketListenPort)
 	conn, err := net.ListenUDP("udp", udpAddr)
 	checkError(err)
@@ -194,7 +194,7 @@ func clientSocketToQueueFEC(socketListenPort string, serverIP string, serverPort
 	}
 }
 
-func clientQueueToTun(tun *water.Interface) {
+func clientQueueToTun(tun *water.Interface, chann chan string) {
 	fmt.Println("client queue to tun")
 	for {
 		item, _ := mClientQueue.Get()
@@ -209,4 +209,9 @@ func clientQueueToTun(tun *water.Interface) {
 			fmt.Println("client tun write not full")
 		}
 	}
+}
+
+func stopClient() {
+	//把go毒死
+
 }

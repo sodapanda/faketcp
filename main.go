@@ -78,57 +78,96 @@ func main() {
 
 	mCodec = newFecCodec(mSegCount, mFecCount, fecCacheSize)
 
-	if *isServer {
-		// serverHandShake(tun)
-		sh := newServerHandshak(tun)
-		sh.waitSyn()
-		sh.sendSynAck()
-		sh.waitAck()
-		//接收
-		if eFec {
-			go serverTunToSocketFEC(tun)
-		} else {
-			go serverTunToSocket(tun)
-		}
-		//发送
-		if eFec {
-			go serverSocketToQueueFEC(serverSocketTo, serverTunSrcPort)
-		} else {
-			go serverSocketToQueueNoFEC(serverSocketTo, serverTunSrcPort)
-		}
-		go serverQueueToTun(tun)
-	} else {
-		fmt.Println("server reader?")
-		bufio.NewReader(os.Stdin).ReadString('\n')
-		chs := newClientHandshak(time.Duration(2)*time.Second, tun)
-		chs.startListen()
-		chs.sendSYN()
+	go func() {
+		if *isServer {
+			//如果收到客户端要重连的请求，关闭其他操作之后执行握手
+			sh := newServerHandshak(tun)
+			sh.waitSyn() //这个不能在loop里，因为之所以重复循环是因为已经收到了syn包 不用再等了
+			for {
+				//握手
+				sh.sendSynAck()
+				sh.waitAck()
 
-		for {
-			time.Sleep(time.Duration(1) * time.Second)
-			if chs.checkConn() {
-				break
+				serverTuntoSocketChan := make(chan string)
+				serverSocketToQueueChan := make(chan string)
+				serverQueueToTunChan := make(chan string)
+				serverHeartBeatChan := make(chan string)
+
+				//心跳
+				shb := newServerHeartBeat()
+				go shb.start(serverHeartBeatChan)
+				//接收
+				if eFec {
+					go serverTunToSocketFEC(tun, serverTuntoSocketChan)
+				} else {
+					go serverTunToSocket(tun, serverTuntoSocketChan)
+				}
+				//发送
+				if eFec {
+					go serverSocketToQueueFEC(serverSocketTo, serverTunSrcPort, serverSocketToQueueChan)
+				} else {
+					go serverSocketToQueueNoFEC(serverSocketTo, serverTunSrcPort, serverSocketToQueueChan)
+				}
+				go serverQueueToTun(tun, serverQueueToTunChan)
+
+				<-serverTuntoSocketChan
+
+				serverStop()
+				<-serverSocketToQueueChan
+				<-serverQueueToTunChan
+				<-serverHeartBeatChan
 			}
-			chs.sendSYN()
-			fmt.Println("client handshake retry")
-		}
-
-		chs.sendAck()
-
-		//接收
-		if eFec {
-			go clientTunToSocketFEC(tun)
 		} else {
-			go clientTunToSocketNoFEC(tun)
+			//如果心跳出问题了，那么其他的go都要退出，重新开始进入握手状态
+			for {
+				//握手
+				chs := newClientHandshak(time.Duration(2)*time.Second, tun)
+				chs.startListen()
+				chs.sendSYN()
+				for {
+					time.Sleep(time.Duration(1) * time.Second)
+					if chs.checkConn() {
+						break
+					}
+					chs.sendSYN()
+					fmt.Println("client handshake retry")
+				}
+				chs.sendAck()
+
+				//发送和接收
+				chbRst := make(chan string)
+				clientTunToSocketChan := make(chan string)
+				clientSocketToQueueChan := make(chan string)
+				clientQueueToTunChan := make(chan string)
+
+				//接收
+				if eFec {
+					go clientTunToSocketFEC(tun, clientTunToSocketChan)
+				} else {
+					go clientTunToSocketNoFEC(tun, clientTunToSocketChan)
+				}
+				//发送
+				if eFec {
+					go clientSocketToQueueFEC(clientSocketListenPort, clientTunDstIP, clientTunDstPort, clientSocketToQueueChan)
+				} else {
+					go clientSocketToQueue(clientSocketListenPort, clientTunDstIP, clientTunDstPort, clientSocketToQueueChan)
+				}
+				go clientQueueToTun(tun, clientQueueToTunChan)
+				//心跳
+				chb := newClientHeartBeat()
+				go chb.start(chbRst)
+
+				//心跳出问题了
+				<-chbRst
+				//停掉所有的go
+				stopClient()
+				//等其他go都完事了，回到握手的状态
+				<-clientTunToSocketChan
+				<-clientSocketToQueueChan
+				<-clientQueueToTunChan
+			}
 		}
-		//发送
-		if eFec {
-			go clientSocketToQueueFEC(clientSocketListenPort, clientTunDstIP, clientTunDstPort)
-		} else {
-			go clientSocketToQueue(clientSocketListenPort, clientTunDstIP, clientTunDstPort)
-		}
-		go clientQueueToTun(tun)
-	}
+	}()
 	reader := bufio.NewReader(os.Stdin)
 	reader.ReadString('\n')
 
